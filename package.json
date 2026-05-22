@@ -1,0 +1,24 @@
+{
+  "name": "aieditimage",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:frontend": "pnpm --filter @aieditimage/frontend dev",
+    "dev:backend": "node scripts/dev.mjs --backend-only",
+    "dev:backend:nest": "pnpm --filter @aieditimage/backend start:dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "mysql": "node backend/scripts/mysql-dev.mjs start",
+    "mysql:init": "node backend/scripts/mysql-dev.mjs prepare",
+    "mysql:sql": "node backend/scripts/mysql-dev.mjs sql",
+    "mysql:help": "node backend/scripts/mysql-dev.mjs help",
+    "seed:admin": "pnpm --filter @aieditimage/backend seed:admin"
+  },
+  "devDependencies": {
+    "mysql-memory-server": "^1.14.1",
+    "mysql2": "^3.22.3"
+  }
+}

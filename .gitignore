@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+.pnpm-store/
+.tmp/
+.env
+.env.local
+backend/uploads/
+backend/generated/
+backend/mysql/*
+!backend/mysql/.gitkeep
+frontend/dist/
+*.log
