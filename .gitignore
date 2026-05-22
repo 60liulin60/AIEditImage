@@ -11,3 +11,4 @@ backend/mysql/*
 !backend/mysql/.gitkeep
 frontend/dist/
 *.log
+.claude
