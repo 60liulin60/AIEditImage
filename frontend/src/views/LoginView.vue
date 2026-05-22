@@ -27,6 +27,7 @@ import { getErrorMessage } from '../api/http';
 
 const router = useRouter();
 const authStore = useAuthStore();
+// 登录请求期间展示按钮加载态，并阻止用户误以为没有提交。
 const loading = ref(false);
 
 // 登录表单只保存页面临时状态，密码不会写入本地存储。
@@ -36,6 +37,7 @@ const form = reactive({
 });
 
 async function handleLogin() {
+  // 空值校验放在前端先挡住明显无效请求，后端仍负责最终认证。
   if (!form.email || !form.password) {
     ElMessage.warning('请输入邮箱和密码');
     return;
@@ -44,6 +46,7 @@ async function handleLogin() {
   loading.value = true;
   try {
     await authStore.login(form.email, form.password);
+    // 登录成功后进入默认工作区，由路由守卫继续保护后续页面。
     await router.push('/generate');
   } catch (error) {
     ElMessage.error(getErrorMessage(error, '登录失败'));

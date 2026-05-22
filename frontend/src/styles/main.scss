@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 全局根样式定义中文优先字体和默认页面底色。 */
 :root {
   color: #1f2937;
   background: #f6f7fb;
@@ -21,6 +22,7 @@ body {
   background: #f6f7fb;
 }
 
+/* 表单控件继承页面字体，避免 Element Plus 与原生输入出现字体跳变。 */
 button,
 input,
 textarea {
@@ -32,6 +34,7 @@ textarea {
   background: #f6f7fb;
 }
 
+/* 通用内容面板仅承载具体表单、表格或卡片，不承载页面布局语义。 */
 .content-panel {
   border: 1px solid #e5e7eb;
   border-radius: 8px;

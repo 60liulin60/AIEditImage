@@ -1,6 +1,7 @@
 import { http } from './http';
 import type { GenerationStatus, ImageGeneration, PaginatedGenerations, Provider } from '../types';
 
+// 创建生成任务的表单数据，API Key 仅随本次请求发送，不写入后端配置表。
 export interface CreateGenerationPayload {
   provider: Provider;
   baseUrl: string;
@@ -12,6 +13,7 @@ export interface CreateGenerationPayload {
 }
 
 export async function createGeneration(payload: CreateGenerationPayload) {
+  // 图片文件必须使用 multipart/form-data，普通 JSON 无法承载 File 对象。
   const formData = new FormData();
   formData.append('provider', payload.provider);
   formData.append('baseUrl', payload.baseUrl);
@@ -33,6 +35,7 @@ export async function createGeneration(payload: CreateGenerationPayload) {
 }
 
 export async function fetchGeneration(id: string) {
+  // 轮询单条记录获取异步生成状态，成功后再拼接图片文件地址。
   const { data } = await http.get<ImageGeneration>(`/generations/${id}`);
   return data;
 }
@@ -43,6 +46,7 @@ export async function fetchGenerations(params: {
   provider?: Provider | '';
   status?: GenerationStatus | '';
 }) {
+  // 只把有效筛选条件传给后端，分页字段始终显式传递。
   const requestParams = {
     page: params.page,
     pageSize: params.pageSize,

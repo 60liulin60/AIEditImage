@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { GenerationStatus, Prisma, Provider } from '@prisma/client';
 import { createReadStream } from 'fs';
-import { mkdir, unlink, writeFile } from 'fs/promises';
+import { mkdir, stat, unlink, writeFile } from 'fs/promises';
 import { basename, join, resolve } from 'path';
 import { randomUUID } from 'crypto';
 import type { AuthenticatedUser } from '../../common/types';
@@ -15,7 +15,7 @@ import { ListGenerationsDto } from './dto/list-generations.dto';
 import { GeminiImageProvider } from './providers/gemini-image.provider';
 import type { ReferenceImageInput } from './providers/image-provider.types';
 import { OpenAiImageProvider } from './providers/openai-image.provider';
-import { getImageExtension } from './providers/provider-utils';
+import { getImageExtension, detectImageBytes, isPrivateProviderHost, PRIVATE_PROVIDER_HOST_ERROR } from './providers/provider-utils';
 
 @Injectable()
 export class GenerationsService {
@@ -31,6 +31,7 @@ export class GenerationsService {
   ) {}
 
   async create(user: AuthenticatedUser, dto: CreateGenerationDto, files: Express.Multer.File[]) {
+    this.validateProviderBaseUrl(dto.baseUrl);
     this.validateReferenceLimit(dto.provider, files.length);
 
     const startedAt = Date.now();
@@ -166,8 +167,15 @@ export class GenerationsService {
 
     // basename 防止数据库中的异常路径逃逸 uploads 目录。
     const safeFilename = basename(record.imagePath);
+    const filePath = join(this.uploadDir, safeFilename);
+    try {
+      await stat(filePath);
+    } catch {
+      throw new NotFoundException('图片文件不存在');
+    }
+
     return {
-      stream: createReadStream(join(this.uploadDir, safeFilename)),
+      stream: createReadStream(filePath),
       mimeType: record.mimeType ?? 'image/png',
     };
   }
@@ -204,12 +212,26 @@ export class GenerationsService {
     }
   }
 
+  private validateProviderBaseUrl(baseUrl: string) {
+    const { hostname } = new URL(baseUrl);
+    if (isPrivateProviderHost(hostname)) {
+      throw new BadRequestException(PRIVATE_PROVIDER_HOST_ERROR);
+    }
+  }
+
   private mapReferenceImages(files: Express.Multer.File[]): ReferenceImageInput[] {
-    return files.map((file) => ({
-      buffer: file.buffer,
-      filename: file.originalname,
-      mimeType: file.mimetype,
-    }));
+    return files.map((file) => {
+      const imageType = detectImageBytes(file.buffer);
+      if (!imageType || imageType.mimeType !== file.mimetype) {
+        throw new BadRequestException('参考图文件内容与图片格式不匹配');
+      }
+
+      return {
+        buffer: file.buffer,
+        filename: file.originalname,
+        mimeType: file.mimetype,
+      };
+    });
   }
 
   private buildSafeRequestParams(dto: CreateGenerationDto, referenceCount: number): Prisma.InputJsonValue {

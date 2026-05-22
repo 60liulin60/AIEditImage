@@ -84,10 +84,15 @@ import { promptTemplates } from '../constants/prompt-templates';
 import type { ApiConfig, Provider } from '../types';
 import { decryptApiKey, listApiConfigs } from '../utils/api-config-store';
 
+// 浏览器本地保存的 API 配置列表，页面加载时一次性读取。
 const configs = ref<ApiConfig[]>([]);
+// Element Plus 上传组件维护的文件列表，提交前再提取原始 File。
 const fileList = ref<UploadUserFile[]>([]);
+// 提交和轮询期间禁用生成按钮，避免重复创建同一任务。
 const submitting = ref(false);
+// 最新成功结果的图片地址，清空表示当前没有可预览结果。
 const latestImageUrl = ref('');
+// 单个轮询定时器句柄，离开页面或任务结束时必须清理。
 let pollingTimer: number | undefined;
 
 // 默认 5 秒轮询一次，避免频繁请求后端；可通过前端 .env 覆盖。
@@ -100,6 +105,7 @@ const providerOptions = [
   { label: 'Nano Banana', value: 'NANO_BANANA' },
 ];
 
+// 生成表单的页面态，API Key 不进入表单，提交时再从加密配置解密。
 const form = reactive({
   configId: '',
   provider: 'GPT' as Provider,
@@ -107,8 +113,11 @@ const form = reactive({
   size: '1024x1024',
 });
 
+// 当前选中的配置作为生成请求的 provider/baseUrl/model 来源。
 const selectedConfig = computed(() => configs.value.find((config) => config.id === form.configId));
+// GPT 支持更多参考图，Nano Banana 按后端能力限制为 3 张。
 const referenceLimit = computed(() => (form.provider === 'GPT' ? 16 : 3));
+// 模板只展示当前 provider 可用的内容，避免误用不兼容提示词。
 const filteredTemplates = computed(() => promptTemplates.filter((template) => template.provider === form.provider));
 
 function formatProvider(provider: Provider) {
@@ -117,27 +126,32 @@ function formatProvider(provider: Provider) {
 
 function handleConfigChange() {
   if (selectedConfig.value) {
+    // 切换配置时同步 provider，确保参考图数量和模板过滤立即更新。
     form.provider = selectedConfig.value.provider;
   }
 }
 
 function useTemplate(prompt: string) {
+  // 模板只是填充文本，仍保留用户继续编辑的空间。
   form.prompt = prompt;
 }
 
 function parsePollInterval(value: string | undefined) {
+  // Vite 环境变量始终是字符串，非法值统一回落到默认轮询间隔。
   const parsedValue = Number(value);
   return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : DEFAULT_GENERATION_POLL_INTERVAL_MS;
 }
 
 function clearPollingTimer() {
   if (pollingTimer) {
+    // window.clearTimeout 只接受有效句柄，清理后置空便于重复调用。
     window.clearTimeout(pollingTimer);
     pollingTimer = undefined;
   }
 }
 
 function scheduleGenerationPolling(id: string, attempt = 0) {
+  // 每次只保留一个轮询任务，避免连续点击或重试导致并发查询。
   clearPollingTimer();
   pollingTimer = window.setTimeout(() => {
     void pollGenerationResult(id, attempt);
@@ -148,6 +162,7 @@ async function pollGenerationResult(id: string, attempt = 0) {
   try {
     const record = await fetchGeneration(id);
     if (record.status === 'SUCCESS') {
+      // 成功后再生成图片地址，确保后端文件已经可读。
       latestImageUrl.value = getGenerationImageUrl(record.id);
       submitting.value = false;
       clearPollingTimer();
@@ -156,6 +171,7 @@ async function pollGenerationResult(id: string, attempt = 0) {
     }
 
     if (record.status === 'FAILED') {
+      // 后端失败信息优先展示，缺失时再使用通用文案。
       submitting.value = false;
       clearPollingTimer();
       ElMessage.error(record.errorMessage || '图片生成失败');
@@ -198,6 +214,7 @@ async function handleGenerate() {
   submitting.value = true;
   try {
     const apiKey = await decryptApiKey(selectedConfig.value);
+    // 请求中的敏感 Key 来自本地解密结果，只随本次生成任务传给后端。
     const result = await createGeneration({
       provider: selectedConfig.value.provider,
       baseUrl: selectedConfig.value.baseUrl,
@@ -218,6 +235,7 @@ async function handleGenerate() {
 }
 
 onMounted(async () => {
+  // 默认选中第一条配置，减少首次进入生成页的操作步骤。
   configs.value = await listApiConfigs();
   if (configs.value[0]) {
     form.configId = configs.value[0].id;

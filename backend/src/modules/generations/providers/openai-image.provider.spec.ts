@@ -4,6 +4,7 @@ import type { ReferenceImageInput } from './image-provider.types';
 
 const PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const JPEG_BASE64 = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGgP//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAQUC/wD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/Af/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8BP//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEABj8C/wD/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/Iaf/2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8QH//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8QH//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAT8Qf//Z';
 
 describe('OpenAiImageProvider', () => {
   const originalFetch = global.fetch;
@@ -138,5 +139,90 @@ describe('OpenAiImageProvider', () => {
     const provider = new OpenAiImageProvider();
 
     await expect(provider.generate(createInput())).rejects.toThrow('实际请求：https://api.openai.test/v1/images/generations');
+  });
+
+  it('passes an abort signal to GPT image generation requests', async () => {
+    mockJsonResponse({
+      data: [{ b64_json: PNG_BASE64 }],
+    });
+
+    const provider = new OpenAiImageProvider();
+    await provider.generate(createInput());
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.openai.test/v1/images/generations',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it('passes an abort signal when downloading image URLs from GPT responses', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: jest.fn().mockResolvedValue(JSON.stringify({ data: [{ url: 'https://cdn.openai.test/image.png' }] })),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'content-type': 'image/png' }),
+        arrayBuffer: jest.fn().mockResolvedValue(Buffer.from(PNG_BASE64, 'base64')),
+      }) as never;
+
+    const provider = new OpenAiImageProvider();
+    await provider.generate(createInput());
+
+    expect(global.fetch).toHaveBeenNthCalledWith(2, 'https://cdn.openai.test/image.png', {
+      signal: expect.any(AbortSignal),
+    });
+  });
+
+  it('rejects GPT image URLs that target private hosts', async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: jest.fn().mockResolvedValue(JSON.stringify({ data: [{ url: 'http://169.254.169.254/latest/meta-data' }] })),
+    }) as never;
+
+    const provider = new OpenAiImageProvider();
+
+    await expect(provider.generate(createInput())).rejects.toThrow('Provider 地址不允许访问本地或内网地址');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects GPT image URLs that use unsupported protocols', async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: jest.fn().mockResolvedValue(JSON.stringify({ data: [{ url: 'file:///etc/passwd' }] })),
+    }) as never;
+
+    const provider = new OpenAiImageProvider();
+
+    await expect(provider.generate(createInput())).rejects.toThrow('Provider 图片地址协议不受支持');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses detected image bytes to choose mime type for base64 GPT responses', async () => {
+    mockJsonResponse({
+      data: [{ b64_json: JPEG_BASE64, output_format: 'png' }],
+    });
+
+    const provider = new OpenAiImageProvider();
+    const result = await provider.generate(createInput());
+
+    expect(result.mimeType).toBe('image/jpeg');
+  });
+
+  it('rejects raw image responses with unsupported image bytes', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'image/svg+xml' }),
+      arrayBuffer: jest.fn().mockResolvedValue(Buffer.from('<svg></svg>')),
+    }) as never;
+
+    const provider = new OpenAiImageProvider();
+
+    await expect(provider.generate(createInput())).rejects.toThrow('GPT 图片接口返回了不支持的图片格式');
   });
 });

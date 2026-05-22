@@ -98,4 +98,82 @@ describe('GenerationsService', () => {
     });
     expect(prisma.imageGeneration.delete).toHaveBeenCalledWith({ where: { id: 'generation-id' } });
   });
+
+  it('rejects provider base URLs that target loopback hosts', async () => {
+    const { service, prisma } = createService();
+
+    await expect(
+      service.create(
+        user,
+        {
+          provider: Provider.GPT,
+          baseUrl: 'http://127.0.0.1:8080/v1',
+          model: 'gpt-image-2',
+          apiKey: 'test-key',
+          prompt: '生成一张图片',
+          size: '1024x1024',
+        },
+        [],
+      ),
+    ).rejects.toThrow('Provider 地址不允许访问本地或内网地址');
+
+    expect(prisma.imageGeneration.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects provider base URLs that target metadata or IPv6 loopback hosts', async () => {
+    const { service, prisma } = createService();
+    const dto = {
+      provider: Provider.GPT,
+      baseUrl: 'http://169.254.169.254/latest/meta-data',
+      model: 'gpt-image-2',
+      apiKey: 'test-key',
+      prompt: '生成一张图片',
+      size: '1024x1024',
+    };
+
+    await expect(service.create(user, dto, [])).rejects.toThrow('Provider 地址不允许访问本地或内网地址');
+    await expect(service.create(user, { ...dto, baseUrl: 'http://[::1]:8080/v1' }, [])).rejects.toThrow(
+      'Provider 地址不允许访问本地或内网地址',
+    );
+
+    expect(prisma.imageGeneration.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects reference images when mime type does not match image bytes', async () => {
+    const { service, prisma } = createService();
+
+    await expect(
+      service.create(
+        user,
+        {
+          provider: Provider.GPT,
+          baseUrl: 'https://api.openai.test/v1',
+          model: 'gpt-image-2',
+          apiKey: 'test-key',
+          prompt: '生成一张图片',
+          size: '1024x1024',
+        },
+        [
+          {
+            buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'),
+            originalname: 'fake.jpg',
+            mimetype: 'image/jpeg',
+          } as Express.Multer.File,
+        ],
+      ),
+    ).rejects.toThrow('参考图文件内容与图片格式不匹配');
+
+    expect(prisma.imageGeneration.create).not.toHaveBeenCalled();
+  });
+
+  it('returns not found when generated image file is missing before streaming', async () => {
+    const { service, prisma } = createService();
+    prisma.imageGeneration.findFirst.mockResolvedValue({
+      id: 'generation-id',
+      imagePath: 'missing.png',
+      mimeType: 'image/png',
+    });
+
+    await expect(service.getImageStream(user, 'generation-id')).rejects.toThrow('图片文件不存在');
+  });
 });

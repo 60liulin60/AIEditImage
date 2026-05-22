@@ -1,5 +1,6 @@
 import type { Provider } from '../types';
 
+// 页面右侧提示词模板的最小展示结构，provider 用于按当前模型类型过滤。
 export interface PromptTemplate {
   title: string;
   provider: Provider;
@@ -7,6 +8,7 @@ export interface PromptTemplate {
   prompt: string;
 }
 
+// 内置模板只作为快速填充提示词，不会自动提交生成任务。
 export const promptTemplates: PromptTemplate[] = [
   {
     title: '角色一致性',

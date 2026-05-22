@@ -60,6 +60,7 @@ import { Edit, Plus } from '@element-plus/icons-vue';
 import { deleteApiConfig, listApiConfigs, saveApiConfig } from '../utils/api-config-store';
 import type { ApiConfig, Provider } from '../types';
 
+// 本地浏览器保存的配置列表，不从后端同步，避免泄露用户私有 Key。
 const configs = ref<ApiConfig[]>([]);
 // 非空表示当前处于编辑模式，保存时按该 id 覆盖原配置。
 const editingConfigId = ref('');
@@ -73,6 +74,7 @@ const providerDefaults: Record<Provider, { baseUrl: string; model: string }> = {
   },
 };
 
+// 配置表单只保存页面输入，保存时再加密 API Key 写入 IndexedDB。
 const form = reactive({
   name: '',
   provider: 'GPT' as Provider,
@@ -91,12 +93,14 @@ function formatProvider(provider: Provider) {
 }
 
 function applyProviderDefaults() {
+  // 切换 provider 时刷新推荐地址和模型，用户仍可手动覆盖。
   const defaults = providerDefaults[form.provider];
   form.baseUrl = defaults.baseUrl;
   form.model = defaults.model;
 }
 
 async function loadConfigs() {
+  // 每次新增、编辑、删除后重新读取，确保表格与 IndexedDB 一致。
   configs.value = await listApiConfigs();
 }
 
@@ -131,6 +135,7 @@ async function handleSave() {
     return;
   }
 
+  // saveApiConfig 内部负责新增加密、编辑沿用旧 Key 等边界处理。
   await saveApiConfig({ ...form, id: editingConfigId.value || undefined });
   ElMessage.success(editingConfigId.value ? '配置已更新' : '配置已保存');
   resetForm();
@@ -138,6 +143,7 @@ async function handleSave() {
 }
 
 async function handleDelete(id: string) {
+  // 删除配置会移除本地密文，之后生成需要用户重新填写 API Key。
   await ElMessageBox.confirm('删除后需要重新填写 API Key，确认删除？', '删除配置', { type: 'warning' });
   await deleteApiConfig(id);
   if (editingConfigId.value === id) {

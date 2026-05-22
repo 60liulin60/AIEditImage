@@ -43,10 +43,13 @@ import { useRouter } from 'vue-router';
 import { Brush, Picture, Setting, SwitchButton, UserFilled } from '@element-plus/icons-vue';
 import { useAuthStore } from '../stores/auth';
 
+// 布局层只读取当前用户信息，用于显示邮箱和控制管理员菜单。
 const authStore = useAuthStore();
+// 退出登录后需要主动跳转，避免停留在受保护页面。
 const router = useRouter();
 
 async function handleLogout() {
+  // 后端会清理会话 Cookie，前端随后回到登录页。
   await authStore.logout();
   await router.push('/login');
 }

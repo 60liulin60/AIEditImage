@@ -60,6 +60,7 @@ import { createUser, fetchUsers, updateUser } from '../api/admin';
 import { getErrorMessage } from '../api/http';
 import type { User, UserRole } from '../types';
 
+// 管理员页面展示的用户列表，状态切换失败时会重新加载以回滚界面。
 const users = ref<User[]>([]);
 
 // 初始密码只在提交时发送给后端，后端保存 bcrypt 哈希。
@@ -70,10 +71,12 @@ const form = reactive({
 });
 
 async function loadUsers() {
+  // 用户列表只在管理员路由下加载，后端仍会校验权限。
   users.value = await fetchUsers();
 }
 
 async function handleCreate() {
+  // 邮箱和初始密码是创建账号的最小必填项。
   if (!form.email || !form.password) {
     ElMessage.warning('请填写邮箱和初始密码');
     return;
@@ -82,6 +85,7 @@ async function handleCreate() {
   try {
     await createUser({ ...form });
     ElMessage.success('用户已创建');
+    // 创建成功后清空表单，角色回到普通用户，降低误建管理员风险。
     form.email = '';
     form.password = '';
     form.role = 'USER';
@@ -93,6 +97,7 @@ async function handleCreate() {
 
 async function handleStatusChange(id: string, isActive: boolean) {
   try {
+    // 开关先乐观更新，失败后通过重新加载列表恢复真实状态。
     await updateUser(id, { isActive });
     ElMessage.success('用户状态已更新');
   } catch (error) {

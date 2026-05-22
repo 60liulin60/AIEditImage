@@ -70,12 +70,18 @@ import { deleteGeneration, fetchGenerations, getGenerationImageUrl } from '../ap
 import { getErrorMessage } from '../api/http';
 import type { GenerationStatus, ImageGeneration, Provider } from '../types';
 
+// 当前页图片记录，由筛选条件和分页共同决定。
 const generations = ref<ImageGeneration[]>([]);
+// 分页总数来自后端，前端不根据当前页长度推断。
 const total = ref(0);
+// 当前页码在删除最后一条记录后可能回退一页。
 const page = ref(1);
+// 固定页大小让列表网格和后端分页保持稳定。
 const pageSize = 12;
+// 列表加载态用于禁用刷新按钮并避免重复反馈。
 const loading = ref(false);
 
+// 空字符串表示不过滤，发送请求前会在 API 层省略该字段。
 const filters = reactive({
   provider: '' as Provider | '',
   status: '' as GenerationStatus | '',
@@ -95,6 +101,7 @@ function formatStatus(status: GenerationStatus) {
 }
 
 async function loadGenerations(targetPage = page.value) {
+  // targetPage 支持筛选重置到第一页，也支持刷新当前页。
   loading.value = true;
   try {
     const data = await fetchGenerations({
@@ -114,9 +121,11 @@ async function loadGenerations(targetPage = page.value) {
 }
 
 async function handleDelete(id: string) {
+  // 删除是不可恢复操作，先让用户确认，再调用后端删除记录和文件。
   await ElMessageBox.confirm('删除后无法在列表中恢复，确认删除？', '删除图片记录', { type: 'warning' });
   await deleteGeneration(id);
   ElMessage.success('图片记录已删除');
+  // 如果当前页最后一条被删，回退一页避免显示空分页。
   const targetPage = generations.value.length === 1 && page.value > 1 ? page.value - 1 : page.value;
   await loadGenerations(targetPage);
 }

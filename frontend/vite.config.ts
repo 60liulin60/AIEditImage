@@ -4,6 +4,7 @@ import vue from '@vitejs/plugin-vue';
 export default defineConfig({
   plugins: [vue()],
   server: {
+    // 固定开发端口便于和根目录脚本、后端代理保持一致。
     port: 5175,
     proxy: {
       // 开发阶段统一代理后端，前端请求可保持 /api 相对路径。

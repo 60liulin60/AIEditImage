@@ -1,9 +1,17 @@
 import { BadGatewayException, Injectable } from '@nestjs/common';
 import type { ImageProviderInput, ImageProviderResult } from './image-provider.types';
-import { extractProviderMessage, joinApiUrl } from './provider-utils';
+import {
+  createProviderAbortSignal,
+  detectImageBytes,
+  assertPublicProviderUrl,
+  extractProviderMessage,
+  joinApiUrl,
+  normalizeProviderError,
+} from './provider-utils';
 
 interface ExtractedBase64Image {
   bytes: Buffer;
+  mimeType: string;
   source: string;
 }
 
@@ -22,7 +30,9 @@ export class OpenAiImageProvider {
     const hasReferences = input.referenceImages.length > 0;
     const baseUrl = this.normalizeBaseUrl(input.baseUrl);
     const url = joinApiUrl(baseUrl, hasReferences ? '/images/edits' : '/images/generations');
-    const response = hasReferences ? await this.requestEdit(url, input) : await this.requestGeneration(url, input);
+    const response = await (hasReferences ? this.requestEdit(url, input) : this.requestGeneration(url, input)).catch((error) =>
+      normalizeProviderError(error, 'GPT 图片接口调用失败'),
+    );
     const parsedResponse = await this.parseProviderResponse(response);
 
     if (!response.ok) {
@@ -64,6 +74,7 @@ export class OpenAiImageProvider {
     // 文生图按参考项目的 Images API 方式使用 JSON；GPT 图片模型默认返回 base64，不额外传 response_format。
     return fetch(url, {
       method: 'POST',
+      signal: createProviderAbortSignal(),
       headers: {
         Authorization: `Bearer ${input.apiKey}`,
         'Content-Type': 'application/json',
@@ -92,6 +103,7 @@ export class OpenAiImageProvider {
 
     return fetch(url, {
       method: 'POST',
+      signal: createProviderAbortSignal(),
       headers: {
         Authorization: `Bearer ${input.apiKey}`,
       },
@@ -106,11 +118,11 @@ export class OpenAiImageProvider {
       return {
         payload: null,
         contentType,
-        rawImage: {
-          bytes: Buffer.from(await response.arrayBuffer()),
-          mimeType: contentType,
-          responseSummary: { source: 'openai.raw_image' },
-        },
+        rawImage: this.createProviderImageResult(
+          Buffer.from(await response.arrayBuffer()),
+          { source: 'openai.raw_image' },
+          'GPT 图片接口返回了不支持的图片格式',
+        ),
       };
     }
 
@@ -139,22 +151,24 @@ export class OpenAiImageProvider {
     if (base64Image) {
       return {
         bytes: base64Image.bytes,
-        mimeType: this.resolveMimeType(record, data),
+        mimeType: base64Image.mimeType,
         responseSummary: { source: base64Image.source },
       };
     }
 
     if (typeof data?.url === 'string') {
-      const imageResponse = await fetch(data.url);
+      assertPublicProviderUrl(data.url);
+      const imageResponse = await fetch(data.url, { signal: createProviderAbortSignal() }).catch((error) =>
+        normalizeProviderError(error, 'GPT 图片地址下载失败'),
+      );
       if (!imageResponse.ok) {
         throw new BadGatewayException('GPT 图片地址下载失败');
       }
-      const mimeType = imageResponse.headers.get('content-type') ?? 'image/png';
-      return {
-        bytes: Buffer.from(await imageResponse.arrayBuffer()),
-        mimeType,
-        responseSummary: { source: 'openai.data.url' },
-      };
+      return this.createProviderImageResult(
+        Buffer.from(await imageResponse.arrayBuffer()),
+        { source: 'openai.data.url' },
+        'GPT 图片地址返回了不支持的图片格式',
+      );
     }
 
     throw new BadGatewayException(`GPT 响应中没有可保存的图片，返回字段：${this.describePayloadShape(payload)}`);
@@ -193,32 +207,29 @@ export class OpenAiImageProvider {
     }
 
     const bytes = Buffer.from(base64, 'base64');
+    const imageType = detectImageBytes(bytes);
     // 只接受真实图片字节，避免把上游返回的普通文本误存为损坏图片。
-    if (!this.isSupportedImageBytes(bytes)) {
+    if (!imageType) {
       return null;
     }
 
-    return { bytes, source };
+    return { bytes, mimeType: imageType.mimeType, source };
   }
 
-  private isSupportedImageBytes(bytes: Buffer): boolean {
-    // 魔数校验覆盖当前落盘支持的 PNG、JPG、WEBP 三类图片格式。
-    return (
-      bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ||
-      bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])) ||
-      (bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP')
-    );
-  }
-
-  private resolveMimeType(record: Record<string, unknown>, data: Record<string, unknown> | undefined): string {
-    const outputFormat = typeof data?.output_format === 'string' ? data.output_format : record.output_format;
-    // output_format 可能来自 GPT 图片接口，决定文件扩展名和浏览器展示类型。
-    const mimeTypes: Record<string, string> = {
-      png: 'image/png',
-      jpeg: 'image/jpeg',
-      webp: 'image/webp',
+  private createProviderImageResult(
+    bytes: Buffer,
+    responseSummary: Record<string, unknown>,
+    unsupportedMessage: string,
+  ): ImageProviderResult {
+    const imageType = detectImageBytes(bytes);
+    if (!imageType) {
+      throw new BadGatewayException(unsupportedMessage);
+    }
+    return {
+      bytes,
+      mimeType: imageType.mimeType,
+      responseSummary,
     };
-    return typeof outputFormat === 'string' ? (mimeTypes[outputFormat] ?? 'image/png') : 'image/png';
   }
 
   private describePayloadShape(payload: unknown): string {

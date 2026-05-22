@@ -71,7 +71,16 @@ export class GenerationsController {
   @Get(':id/file')
   async file(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Res() response: Response) {
     const image = await this.generationsService.getImageStream(user, id);
+    image.stream.on('error', () => this.handleImageStreamError(response));
     response.setHeader('Content-Type', image.mimeType);
     image.stream.pipe(response);
+  }
+
+  private handleImageStreamError(response: Response) {
+    if (response.headersSent) {
+      response.destroy();
+      return;
+    }
+    response.status(404).send('图片文件不存在');
   }
 }
