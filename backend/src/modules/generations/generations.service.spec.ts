@@ -1,5 +1,6 @@
 import { GenerationStatus, Provider } from '@prisma/client';
 import type { AuthenticatedUser } from '../../common/types';
+import { GENERATION_MAX_CONCURRENCY, GENERATION_TASK_TIMEOUT_MS, GENERATION_STALE_PENDING_MS } from './constants';
 import { GenerationsService } from './generations.service';
 
 describe('GenerationsService', () => {
@@ -9,9 +10,18 @@ describe('GenerationsService', () => {
     role: 'USER',
   };
 
-  function createService() {
-    const pendingRecord = {
-      id: 'generation-id',
+  const dto = {
+    provider: Provider.GPT,
+    baseUrl: 'https://api.openai.test/v1',
+    model: 'gpt-image-2',
+    apiKey: 'test-key',
+    prompt: '生成一张图片',
+    size: '1024x1024',
+  };
+
+  function createPendingRecord(id: string) {
+    return {
+      id,
       userId: user.id,
       provider: Provider.GPT,
       model: 'gpt-image-2',
@@ -29,12 +39,38 @@ describe('GenerationsService', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+  }
+
+  function createDeferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((promiseResolve, promiseReject) => {
+      resolve = promiseResolve;
+      reject = promiseReject;
+    });
+    return { promise, resolve, reject };
+  }
+
+  async function flushPromises() {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+
+  function createService() {
+    let nextRecordIndex = 0;
+    const pendingRecord = createPendingRecord('generation-id');
+    const createdRecords: ReturnType<typeof createPendingRecord>[] = [];
     const prisma = {
       imageGeneration: {
-        create: jest.fn().mockResolvedValue(pendingRecord),
+        create: jest.fn().mockImplementation(async () => {
+          const record = nextRecordIndex === 0 ? pendingRecord : createPendingRecord(`generation-id-${nextRecordIndex}`);
+          nextRecordIndex += 1;
+          createdRecords.push(record);
+          return record;
+        }),
         findFirst: jest.fn(),
-        findUnique: jest.fn().mockResolvedValue({ id: pendingRecord.id }),
+        findUnique: jest.fn().mockResolvedValue({ id: pendingRecord.id, status: GenerationStatus.PENDING }),
         update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         delete: jest.fn(),
       },
     };
@@ -51,24 +87,14 @@ describe('GenerationsService', () => {
       prisma,
       openAiProvider,
       pendingRecord,
+      createdRecords,
     };
   }
 
   it('returns the pending database record before provider generation finishes', async () => {
-    const { service, prisma, openAiProvider, pendingRecord } = createService();
+    const { service, prisma, pendingRecord } = createService();
 
-    const result = await service.create(
-      user,
-      {
-        provider: Provider.GPT,
-        baseUrl: 'https://api.openai.test/v1',
-        model: 'gpt-image-2',
-        apiKey: 'test-key',
-        prompt: '生成一张图片',
-        size: '1024x1024',
-      },
-      [],
-    );
+    const result = await service.create(user, dto, []);
 
     expect(result).toBe(pendingRecord);
     expect(prisma.imageGeneration.create).toHaveBeenCalledWith(
@@ -81,6 +107,102 @@ describe('GenerationsService', () => {
     );
     expect(result.status).toBe(GenerationStatus.PENDING);
     expect(prisma.imageGeneration.update).not.toHaveBeenCalled();
+  });
+
+  it('limits active provider calls to the configured generation concurrency', async () => {
+    const { service, openAiProvider } = createService();
+
+    await Promise.all(
+      Array.from({ length: GENERATION_MAX_CONCURRENCY + 2 }, () => service.create(user, dto, [])),
+    );
+
+    expect(openAiProvider.generate).toHaveBeenCalledTimes(GENERATION_MAX_CONCURRENCY);
+  });
+
+  it('starts queued generation tasks in FIFO order after an active task finishes', async () => {
+    const { service, openAiProvider, prisma } = createService();
+    const deferredTasks = Array.from({ length: GENERATION_MAX_CONCURRENCY + 1 }, () =>
+      createDeferred<{ bytes: Buffer; mimeType: string; responseSummary: Record<string, never> }>(),
+    );
+    let generateIndex = 0;
+    openAiProvider.generate.mockImplementation(() => {
+      const task = deferredTasks[generateIndex];
+      generateIndex += 1;
+      return task.promise;
+    });
+    prisma.imageGeneration.findUnique.mockResolvedValue(null);
+
+    await Promise.all(
+      Array.from({ length: GENERATION_MAX_CONCURRENCY + 1 }, () => service.create(user, dto, [])),
+    );
+    expect(openAiProvider.generate).toHaveBeenCalledTimes(GENERATION_MAX_CONCURRENCY);
+
+    deferredTasks[0].resolve({ bytes: Buffer.from('image'), mimeType: 'image/png', responseSummary: {} });
+    await flushPromises();
+
+    expect(openAiProvider.generate).toHaveBeenCalledTimes(GENERATION_MAX_CONCURRENCY + 1);
+  });
+
+  it('releases generation slots after provider failures so queued tasks continue', async () => {
+    const { service, openAiProvider } = createService();
+    const deferredTasks = Array.from({ length: GENERATION_MAX_CONCURRENCY + 1 }, () =>
+      createDeferred<{ bytes: Buffer; mimeType: string; responseSummary: Record<string, never> }>(),
+    );
+    let generateIndex = 0;
+    openAiProvider.generate.mockImplementation(() => {
+      const task = deferredTasks[generateIndex];
+      generateIndex += 1;
+      return task.promise;
+    });
+
+    await Promise.all(
+      Array.from({ length: GENERATION_MAX_CONCURRENCY + 1 }, () => service.create(user, dto, [])),
+    );
+    expect(openAiProvider.generate).toHaveBeenCalledTimes(GENERATION_MAX_CONCURRENCY);
+
+    deferredTasks[0].reject(new Error('provider failed'));
+    await flushPromises();
+
+    expect(openAiProvider.generate).toHaveBeenCalledTimes(GENERATION_MAX_CONCURRENCY + 1);
+  });
+
+  it('marks timed out generation tasks as failed', async () => {
+    jest.useFakeTimers();
+    const { service, prisma } = createService();
+
+    await service.create(user, dto, []);
+    await jest.advanceTimersByTimeAsync(GENERATION_TASK_TIMEOUT_MS);
+
+    expect(prisma.imageGeneration.update).toHaveBeenCalledWith({
+      where: { id: 'generation-id' },
+      data: expect.objectContaining({
+        status: GenerationStatus.FAILED,
+        errorMessage: '图片生成任务超时',
+      }),
+    });
+
+    jest.useRealTimers();
+  });
+
+  it('marks stale pending generations as failed on module init', async () => {
+    const { service, prisma } = createService();
+    prisma.imageGeneration.updateMany.mockResolvedValue({ count: 3 });
+    const beforeCleanup = Date.now() - GENERATION_STALE_PENDING_MS;
+
+    await service.onModuleInit();
+
+    expect(prisma.imageGeneration.updateMany).toHaveBeenCalledWith({
+      where: {
+        status: GenerationStatus.PENDING,
+        updatedAt: { lt: expect.any(Date) },
+      },
+      data: {
+        status: GenerationStatus.FAILED,
+        errorMessage: '服务重启后生成任务已过期，请重新提交',
+      },
+    });
+    const staleCutoff = prisma.imageGeneration.updateMany.mock.calls[0][0].where.updatedAt.lt;
+    expect(staleCutoff.getTime()).toBeLessThanOrEqual(beforeCleanup);
   });
 
   it('deletes only records owned by the current user', async () => {
@@ -122,7 +244,7 @@ describe('GenerationsService', () => {
 
   it('rejects provider base URLs that target metadata or IPv6 loopback hosts', async () => {
     const { service, prisma } = createService();
-    const dto = {
+    const invalidDto = {
       provider: Provider.GPT,
       baseUrl: 'http://169.254.169.254/latest/meta-data',
       model: 'gpt-image-2',
@@ -131,8 +253,8 @@ describe('GenerationsService', () => {
       size: '1024x1024',
     };
 
-    await expect(service.create(user, dto, [])).rejects.toThrow('Provider 地址不允许访问本地或内网地址');
-    await expect(service.create(user, { ...dto, baseUrl: 'http://[::1]:8080/v1' }, [])).rejects.toThrow(
+    await expect(service.create(user, invalidDto, [])).rejects.toThrow('Provider 地址不允许访问本地或内网地址');
+    await expect(service.create(user, { ...invalidDto, baseUrl: 'http://[::1]:8080/v1' }, [])).rejects.toThrow(
       'Provider 地址不允许访问本地或内网地址',
     );
 
@@ -145,14 +267,7 @@ describe('GenerationsService', () => {
     await expect(
       service.create(
         user,
-        {
-          provider: Provider.GPT,
-          baseUrl: 'https://api.openai.test/v1',
-          model: 'gpt-image-2',
-          apiKey: 'test-key',
-          prompt: '生成一张图片',
-          size: '1024x1024',
-        },
+        dto,
         [
           {
             buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'),

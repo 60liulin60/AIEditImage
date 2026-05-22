@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { GenerationStatus, Prisma, Provider } from '@prisma/client';
 import { createReadStream } from 'fs';
 import { mkdir, stat, unlink, writeFile } from 'fs/promises';
@@ -7,6 +7,9 @@ import { randomUUID } from 'crypto';
 import type { AuthenticatedUser } from '../../common/types';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  GENERATION_MAX_CONCURRENCY,
+  GENERATION_STALE_PENDING_MS,
+  GENERATION_TASK_TIMEOUT_MS,
   GPT_MAX_REFERENCE_IMAGES,
   NANO_BANANA_MAX_REFERENCE_IMAGES,
 } from './constants';
@@ -17,18 +20,47 @@ import type { ReferenceImageInput } from './providers/image-provider.types';
 import { OpenAiImageProvider } from './providers/openai-image.provider';
 import { getImageExtension, detectImageBytes, isPrivateProviderHost, PRIVATE_PROVIDER_HOST_ERROR } from './providers/provider-utils';
 
+interface QueuedGenerationTask {
+  recordId: string;
+  dto: CreateGenerationDto;
+  referenceImages: ReferenceImageInput[];
+  startedAt: number;
+}
+
 @Injectable()
-export class GenerationsService {
+export class GenerationsService implements OnModuleInit {
   private readonly logger = new Logger(GenerationsService.name);
 
   // 图片存储根目录固定在 backend/uploads/generated，数据库只保存相对文件名。
   private readonly uploadDir = resolve(process.cwd(), 'uploads', 'generated');
+
+  private activeGenerationCount = 0;
+
+  private readonly generationQueue: QueuedGenerationTask[] = [];
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly openAiProvider: OpenAiImageProvider,
     private readonly geminiProvider: GeminiImageProvider,
   ) {}
+
+  async onModuleInit() {
+    const staleCutoff = new Date(Date.now() - GENERATION_STALE_PENDING_MS);
+    const result = await this.prisma.imageGeneration.updateMany({
+      where: {
+        status: GenerationStatus.PENDING,
+        updatedAt: { lt: staleCutoff },
+      },
+      data: {
+        status: GenerationStatus.FAILED,
+        errorMessage: '服务重启后生成任务已过期，请重新提交',
+      },
+    });
+
+    if (result.count > 0) {
+      this.logger.warn(`已将 ${result.count} 个陈旧生成任务标记为失败`);
+    }
+  }
 
   async create(user: AuthenticatedUser, dto: CreateGenerationDto, files: Express.Multer.File[]) {
     this.validateProviderBaseUrl(dto.baseUrl);
@@ -52,7 +84,7 @@ export class GenerationsService {
     });
 
     // 生成任务可能耗时较长；接口立即返回 PENDING 记录，后台完成后再更新同一条数据库记录。
-    void this.processGeneration(record.id, dto, referenceImages, startedAt);
+    void this.enqueueGeneration(record.id, dto, referenceImages, startedAt);
 
     return record;
   }
@@ -85,6 +117,54 @@ export class GenerationsService {
     return { ok: true };
   }
 
+  private enqueueGeneration(
+    recordId: string,
+    dto: CreateGenerationDto,
+    referenceImages: ReferenceImageInput[],
+    startedAt: number,
+  ) {
+    this.generationQueue.push({ recordId, dto, referenceImages, startedAt });
+    this.drainGenerationQueue();
+  }
+
+  private drainGenerationQueue() {
+    while (this.activeGenerationCount < GENERATION_MAX_CONCURRENCY && this.generationQueue.length > 0) {
+      const task = this.generationQueue.shift();
+      if (task) {
+        void this.runGenerationTask(task);
+      }
+    }
+  }
+
+  private async runGenerationTask(task: QueuedGenerationTask) {
+    this.activeGenerationCount += 1;
+    try {
+      await this.withGenerationTimeout(this.processGeneration(task.recordId, task.dto, task.referenceImages, task.startedAt));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '图片生成失败';
+      await this.markGenerationFailed(task.recordId, message, Date.now() - task.startedAt);
+    } finally {
+      this.activeGenerationCount -= 1;
+      this.drainGenerationQueue();
+    }
+  }
+
+  private async withGenerationTimeout<T>(generationPromise: Promise<T>) {
+    let timeout: NodeJS.Timeout | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => reject(new Error('图片生成任务超时')), GENERATION_TASK_TIMEOUT_MS);
+      timeout.unref?.();
+    });
+
+    try {
+      return await Promise.race([generationPromise, timeoutPromise]);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }
+  }
+
   private async processGeneration(
     recordId: string,
     dto: CreateGenerationDto,
@@ -98,6 +178,8 @@ export class GenerationsService {
           ? await this.openAiProvider.generate({ ...dto, referenceImages })
           : await this.geminiProvider.generate({ ...dto, referenceImages });
 
+      this.assertGenerationNotTimedOut(startedAt);
+
       const activeRecord = await this.prisma.imageGeneration.findUnique({
         where: { id: recordId },
         select: { id: true },
@@ -108,8 +190,10 @@ export class GenerationsService {
       }
 
       await mkdir(this.uploadDir, { recursive: true });
+      this.assertGenerationNotTimedOut(startedAt);
       filename = `${recordId}-${randomUUID()}.${getImageExtension(result.mimeType)}`;
       await writeFile(join(this.uploadDir, filename), result.bytes);
+      this.assertGenerationNotTimedOut(startedAt);
 
       await this.prisma.imageGeneration.update({
         where: { id: recordId },
@@ -127,6 +211,12 @@ export class GenerationsService {
         await this.deleteGeneratedFile(filename);
       }
       await this.markGenerationFailed(recordId, message, Date.now() - startedAt);
+    }
+  }
+
+  private assertGenerationNotTimedOut(startedAt: number) {
+    if (Date.now() - startedAt >= GENERATION_TASK_TIMEOUT_MS) {
+      throw new Error('图片生成任务超时');
     }
   }
 
