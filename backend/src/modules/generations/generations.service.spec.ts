@@ -68,11 +68,15 @@ describe('GenerationsService', () => {
           return record;
         }),
         findFirst: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn().mockResolvedValue({ id: pendingRecord.id, status: GenerationStatus.PENDING }),
+        count: jest.fn().mockResolvedValue(0),
         update: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         delete: jest.fn(),
       },
+      // Prisma 事务接收已创建的查询 Promise；测试中直接并发 resolve 即可覆盖调用参数。
+      $transaction: jest.fn((operations: Promise<unknown>[]) => Promise.all(operations)),
     };
     const openAiProvider = {
       // 默认挂起后台 provider，确保测试只验证 create 的同步返回边界。
@@ -203,6 +207,39 @@ describe('GenerationsService', () => {
     });
     const staleCutoff = prisma.imageGeneration.updateMany.mock.calls[0][0].where.updatedAt.lt;
     expect(staleCutoff.getTime()).toBeLessThanOrEqual(beforeCleanup);
+  });
+
+  it('loads list page ids before reading full generation records', async () => {
+    const { service, prisma } = createService();
+    const firstRecord = createPendingRecord('first-generation-id');
+    const secondRecord = createPendingRecord('second-generation-id');
+    prisma.imageGeneration.findMany
+      .mockResolvedValueOnce([{ id: firstRecord.id }, { id: secondRecord.id }])
+      // 模拟数据库按 in 查询返回顺序不稳定，service 需要按分页 id 顺序还原。
+      .mockResolvedValueOnce([secondRecord, firstRecord]);
+    prisma.imageGeneration.count.mockResolvedValue(2);
+
+    const result = await service.list(user, { page: 1, pageSize: 12 });
+
+    expect(result.items).toEqual([firstRecord, secondRecord]);
+    expect(result.total).toBe(2);
+    expect(prisma.imageGeneration.findMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        userId: user.id,
+        provider: undefined,
+        status: undefined,
+      },
+      orderBy: { createdAt: 'desc' },
+      skip: 0,
+      take: 12,
+      select: { id: true },
+    });
+    expect(prisma.imageGeneration.findMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: { in: [firstRecord.id, secondRecord.id] },
+        userId: user.id,
+      },
+    });
   });
 
   it('deletes only records owned by the current user', async () => {

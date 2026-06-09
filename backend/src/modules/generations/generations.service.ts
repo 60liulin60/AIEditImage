@@ -228,15 +228,31 @@ export class GenerationsService implements OnModuleInit {
     };
 
     const skip = (query.page - 1) * query.pageSize;
-    const [items, total] = await this.prisma.$transaction([
+    const [pageRecords, total] = await this.prisma.$transaction([
       this.prisma.imageGeneration.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: query.pageSize,
+        // 列表排序只需要 id，避免 MySQL 对大 JSON/文本字段排序时触发 sort buffer 内存不足。
+        select: { id: true },
       }),
       this.prisma.imageGeneration.count({ where }),
     ]);
+
+    const pageIds = pageRecords.map((record) => record.id);
+    const records =
+      pageIds.length > 0
+        ? await this.prisma.imageGeneration.findMany({
+            // id 来自同一用户的分页查询；这里保留 userId 约束，防止异常 id 混入后越权读取。
+            where: { id: { in: pageIds }, userId: user.id },
+          })
+        : [];
+    const recordById = new Map(records.map((record) => [record.id, record]));
+    const items = pageIds
+      .map((id) => recordById.get(id))
+      // 分页 id 查询和详情查询之间若记录被删除，直接跳过缺失项，避免列表接口报错。
+      .filter((record): record is (typeof records)[number] => Boolean(record));
 
     return {
       items,

@@ -49,9 +49,10 @@ describe('OpenAiImageProvider', () => {
   }
 
   it('generates an image without reference images through images generations', async () => {
-    mockJsonResponse({
-      data: [{ b64_json: PNG_BASE64 }],
-    });
+    const payload = {
+      data: [{ b64_json: PNG_BASE64, revised_prompt: '优化后的红色方块图片', size: '1024x1024' }],
+    };
+    mockJsonResponse(payload);
 
     const provider = new OpenAiImageProvider();
     const result = await provider.generate(createInput());
@@ -65,7 +66,12 @@ describe('OpenAiImageProvider', () => {
     );
     expect(result.mimeType).toBe('image/png');
     expect(result.bytes.length).toBeGreaterThan(0);
-    expect(result.responseSummary).toEqual({ source: 'openai.data.b64_json' });
+    expect(result.responseSummary).toEqual({
+      source: 'openai.data.b64_json',
+      revisedPrompts: ['优化后的红色方块图片'],
+      actualParams: { size: '1024x1024' },
+      rawResponse: payload,
+    });
   });
 
   it('adds v1 when the official OpenAI API host is configured without a version path', async () => {
@@ -102,20 +108,28 @@ describe('OpenAiImageProvider', () => {
 
   it('accepts responses-style image output from compatible GPT gateways', async () => {
     // 兼容 Responses API image_generation_call 的 result 字段，避免文生图成功后误报无图片。
-    mockJsonResponse({
+    const payload = {
       output: [
         {
           type: 'image_generation_call',
           result: PNG_BASE64,
+          revised_prompt: '兼容响应里的优化提示词',
+          output_format: 'png',
         },
       ],
-    });
+    };
+    mockJsonResponse(payload);
 
     const provider = new OpenAiImageProvider();
     const result = await provider.generate(createInput());
 
     expect(result.mimeType).toBe('image/png');
-    expect(result.responseSummary).toEqual({ source: 'openai.output.result' });
+    expect(result.responseSummary).toEqual({
+      source: 'openai.output.result',
+      revisedPrompts: ['兼容响应里的优化提示词'],
+      actualParams: { output_format: 'png' },
+      rawResponse: payload,
+    });
   });
 
   it('describes the response shape when no image can be extracted', async () => {

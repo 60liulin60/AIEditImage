@@ -15,6 +15,14 @@ interface ExtractedBase64Image {
   source: string;
 }
 
+interface OpenAiResponseSummary extends Record<string, unknown> {
+  source: string;
+  revisedPrompts?: string[];
+  actualParams?: Record<string, unknown>;
+  // rawResponse 保存 GPT 接口返回的完整 JSON，查看页依赖它展示 revised_prompt 等所有上游字段。
+  rawResponse: unknown;
+}
+
 interface ParsedProviderResponse {
   payload: unknown;
   rawImage?: ImageProviderResult;
@@ -120,7 +128,13 @@ export class OpenAiImageProvider {
         contentType,
         rawImage: this.createProviderImageResult(
           Buffer.from(await response.arrayBuffer()),
-          { source: 'openai.raw_image' },
+          {
+            source: 'openai.raw_image',
+            rawResponse: {
+              contentType,
+              note: '接口直接返回图片二进制，响应正文已作为图片文件保存',
+            },
+          },
           'GPT 图片接口返回了不支持的图片格式',
         ),
       };
@@ -152,7 +166,7 @@ export class OpenAiImageProvider {
       return {
         bytes: base64Image.bytes,
         mimeType: base64Image.mimeType,
-        responseSummary: { source: base64Image.source },
+        responseSummary: this.buildResponseSummary(record, base64Image.source),
       };
     }
 
@@ -166,7 +180,7 @@ export class OpenAiImageProvider {
       }
       return this.createProviderImageResult(
         Buffer.from(await imageResponse.arrayBuffer()),
-        { source: 'openai.data.url' },
+        this.buildResponseSummary(record, 'openai.data.url'),
         'GPT 图片地址返回了不支持的图片格式',
       );
     }
@@ -218,7 +232,7 @@ export class OpenAiImageProvider {
 
   private createProviderImageResult(
     bytes: Buffer,
-    responseSummary: Record<string, unknown>,
+    responseSummary: OpenAiResponseSummary,
     unsupportedMessage: string,
   ): ImageProviderResult {
     const imageType = detectImageBytes(bytes);
@@ -244,5 +258,60 @@ export class OpenAiImageProvider {
       ? Object.keys(record.data[0] as Record<string, unknown>).slice(0, 8).join(', ')
       : '';
     return dataKeys ? `${topLevelKeys}; data[0]: ${dataKeys}` : topLevelKeys;
+  }
+
+  private buildResponseSummary(payload: Record<string, unknown>, source: string): OpenAiResponseSummary {
+    // responseSummary 面向历史查看页，必须保留 GPT 返回的完整 JSON，避免 revised_prompt 等字段丢失。
+    const revisedPrompts = this.extractRevisedPrompts(payload);
+    const actualParams = this.extractActualParams(payload);
+    return {
+      source,
+      ...(revisedPrompts.length > 0 ? { revisedPrompts } : {}),
+      ...(Object.keys(actualParams).length > 0 ? { actualParams } : {}),
+      rawResponse: payload,
+    };
+  }
+
+  private extractRevisedPrompts(payload: Record<string, unknown>): string[] {
+    // OpenAI Images API 使用 data[].revised_prompt，Responses 兼容返回常见于 output[].revised_prompt。
+    return [...this.collectStringValues(payload.data, 'revised_prompt'), ...this.collectStringValues(payload.output, 'revised_prompt')];
+  }
+
+  private extractActualParams(payload: Record<string, unknown>): Record<string, unknown> {
+    // 只汇总参考项目展示过的实际生效参数；完整字段仍在 rawResponse 中保留。
+    const params: Record<string, unknown> = {};
+    const supportedKeys = ['size', 'quality', 'output_format', 'output_compression', 'moderation', 'n'];
+    const candidates = [
+      payload,
+      ...(Array.isArray(payload.data) ? payload.data : []),
+      ...(Array.isArray(payload.output) ? payload.output : []),
+    ];
+
+    for (const candidate of candidates) {
+      if (!candidate || typeof candidate !== 'object') {
+        continue;
+      }
+
+      const record = candidate as Record<string, unknown>;
+      for (const key of supportedKeys) {
+        if (params[key] === undefined && record[key] !== undefined) {
+          params[key] = record[key];
+        }
+      }
+    }
+
+    return params;
+  }
+
+  private collectStringValues(value: unknown, key: string): string[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.flatMap((item) => {
+      const record = item as Record<string, unknown> | undefined;
+      const fieldValue = record?.[key];
+      return typeof fieldValue === 'string' && fieldValue.trim() ? [fieldValue] : [];
+    });
   }
 }

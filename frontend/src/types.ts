@@ -5,6 +5,9 @@ export type UserRole = 'ADMIN' | 'USER';
 // 生成状态覆盖异步任务的三个终态/中间态。
 export type GenerationStatus = 'PENDING' | 'SUCCESS' | 'FAILED';
 
+// 后端 JSON 字段保持未知结构，前端只在展示时做安全格式化。
+export type JsonRecord = Record<string, unknown>;
+
 // 当前登录用户和管理员列表共用的用户结构。
 export interface User {
   id: string;
@@ -42,6 +45,8 @@ export interface ImageGeneration {
   mimeType?: string | null;
   durationMs?: number | null;
   errorMessage?: string | null;
+  requestParams?: JsonRecord | null;
+  responseSummary?: JsonRecord | null;
   createdAt: string;
 }
 
