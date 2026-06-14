@@ -20,7 +20,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label=" ">
-          <el-button type="primary" class="w-full" :icon="Plus" @click="handleCreate">创建用户</el-button>
+          <el-button type="primary" class="w-full" :icon="Plus" :loading="createLoading" :disabled="createLoading || loading" @click="handleCreate">创建用户</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -40,6 +40,8 @@
               active-text="启用"
               inactive-text="禁用"
               inline-prompt
+              :loading="isUpdating(row.id)"
+              :disabled="isUpdating(row.id) || loading"
               @change="(value: boolean) => handleStatusChange(row.id, value)"
             />
           </template>
@@ -60,8 +62,10 @@ import { createUser, fetchUsers, updateUser } from '../api/admin';
 import { getErrorMessage } from '../api/http';
 import type { User, UserRole } from '../types';
 
-// 管理员页面展示的用户列表，状态切换失败时会重新加载以回滚界面。
 const users = ref<User[]>([]);
+const loading = ref(false);
+const createLoading = ref(false);
+const updatingUserIds = ref<string[]>([]);
 
 // 初始密码只在提交时发送给后端，后端保存 bcrypt 哈希。
 const form = reactive({
@@ -72,18 +76,43 @@ const form = reactive({
 
 async function loadUsers() {
   // 用户列表只在管理员路由下加载，后端仍会校验权限。
-  users.value = await fetchUsers();
+  loading.value = true;
+  try {
+    users.value = await fetchUsers();
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '用户列表加载失败'));
+  } finally {
+    loading.value = false;
+  }
+}
+
+function isUpdating(id: string) {
+  return updatingUserIds.value.includes(id);
 }
 
 async function handleCreate() {
-  // 邮箱和初始密码是创建账号的最小必填项。
-  if (!form.email || !form.password) {
-    ElMessage.warning('请填写邮箱和初始密码');
+  if (loading.value || createLoading.value) {
     return;
   }
 
+  const email = form.email.trim();
+  const password = form.password;
+  if (!email || !password) {
+    ElMessage.warning('请填写邮箱和初始密码');
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    ElMessage.warning('请输入有效邮箱');
+    return;
+  }
+  if (password.length < 6) {
+    ElMessage.warning('初始密码至少需要 6 位');
+    return;
+  }
+
+  createLoading.value = true;
   try {
-    await createUser({ ...form });
+    await createUser({ email, password, role: form.role });
     ElMessage.success('用户已创建');
     // 创建成功后清空表单，角色回到普通用户，降低误建管理员风险。
     form.email = '';
@@ -92,10 +121,17 @@ async function handleCreate() {
     await loadUsers();
   } catch (error) {
     ElMessage.error(getErrorMessage(error, '创建用户失败'));
+  } finally {
+    createLoading.value = false;
   }
 }
 
 async function handleStatusChange(id: string, isActive: boolean) {
+  if (loading.value || isUpdating(id)) {
+    return;
+  }
+
+  updatingUserIds.value.push(id);
   try {
     // 开关先乐观更新，失败后通过重新加载列表恢复真实状态。
     await updateUser(id, { isActive });
@@ -103,6 +139,8 @@ async function handleStatusChange(id: string, isActive: boolean) {
   } catch (error) {
     ElMessage.error(getErrorMessage(error, '用户状态更新失败'));
     await loadUsers();
+  } finally {
+    updatingUserIds.value = updatingUserIds.value.filter((userId) => userId !== id);
   }
 }
 

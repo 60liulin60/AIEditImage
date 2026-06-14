@@ -63,7 +63,8 @@ export async function deleteGeneration(id: string) {
   await http.delete(`/generations/${id}`);
 }
 
-export function getGenerationImageUrl(id: string) {
-  // 加时间戳可在列表刷新后避开浏览器缓存旧图。
-  return `/api/generations/${id}/file?t=${Date.now()}`;
+export function getGenerationImageUrl(id: string, cacheBuster?: number | string) {
+  // 默认返回稳定地址，组件需要刷新图片缓存时再传入单次生成的 cacheBuster。
+  const query = cacheBuster === undefined ? '' : `?t=${encodeURIComponent(String(cacheBuster))}`;
+  return `/api/generations/${encodeURIComponent(id)}/file${query}`;
 }

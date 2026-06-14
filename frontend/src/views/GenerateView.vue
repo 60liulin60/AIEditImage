@@ -9,7 +9,7 @@
       <div class="content-panel p-5">
         <el-form :model="form" label-position="top" class="space-y-2">
           <el-form-item label="API 配置">
-            <el-select v-model="form.configId" class="w-full" placeholder="请选择配置" @change="handleConfigChange">
+            <el-select v-model="form.configId" class="w-full" placeholder="请选择配置" :disabled="submitting || configsLoading" @change="handleConfigChange">
               <el-option
                 v-for="config in configs"
                 :key="config.id"
@@ -19,13 +19,13 @@
             </el-select>
           </el-form-item>
           <el-form-item label="类型">
-            <el-segmented v-model="form.provider" :options="providerOptions" />
+            <el-segmented v-model="form.provider" :options="providerOptions" :disabled="submitting" @change="handleProviderChange" />
           </el-form-item>
           <el-form-item label="提示词">
             <el-input v-model="form.prompt" type="textarea" :rows="7" maxlength="2000" show-word-limit />
           </el-form-item>
           <el-form-item label="尺寸">
-            <el-select v-model="form.size" class="w-full">
+            <el-select v-model="form.size" class="w-full" :disabled="submitting">
               <el-option label="1024x1024" value="1024x1024" />
               <el-option label="1024x1536" value="1024x1536" />
               <el-option label="1536x1024" value="1536x1024" />
@@ -38,6 +38,7 @@
               multiple
               :auto-upload="false"
               :limit="referenceLimit"
+              :disabled="submitting"
               accept="image/png,image/jpeg,image/webp"
               class="w-full"
             >
@@ -48,8 +49,8 @@
               </template>
             </el-upload>
           </el-form-item>
-          <el-button type="primary" class="w-full" :loading="submitting" :icon="MagicStick" @click="handleGenerate">
-            生成图片
+          <el-button type="primary" class="w-full" :loading="submitting" :disabled="submitting" :icon="MagicStick" @click="handleGenerate">
+            {{ submitting ? '生成中' : '生成图片' }}
           </el-button>
         </el-form>
       </div>
@@ -84,8 +85,8 @@ import { promptTemplates } from '../constants/prompt-templates';
 import type { ApiConfig, Provider } from '../types';
 import { decryptApiKey, listApiConfigs } from '../utils/api-config-store';
 
-// 浏览器本地保存的 API 配置列表，页面加载时一次性读取。
 const configs = ref<ApiConfig[]>([]);
+const configsLoading = ref(false);
 // Element Plus 上传组件维护的文件列表，提交前再提取原始 File。
 const fileList = ref<UploadUserFile[]>([]);
 // 提交和轮询期间禁用生成按钮，避免重复创建同一任务。
@@ -128,6 +129,18 @@ function handleConfigChange() {
   if (selectedConfig.value) {
     // 切换配置时同步 provider，确保参考图数量和模板过滤立即更新。
     form.provider = selectedConfig.value.provider;
+  }
+  trimReferenceFilesIfNeeded();
+}
+
+function handleProviderChange() {
+  trimReferenceFilesIfNeeded();
+}
+
+function trimReferenceFilesIfNeeded() {
+  if (fileList.value.length > referenceLimit.value) {
+    fileList.value = fileList.value.slice(0, referenceLimit.value);
+    ElMessage.warning(`当前类型最多支持 ${referenceLimit.value} 张参考图，已移除多余文件`);
   }
 }
 
@@ -191,10 +204,17 @@ async function pollGenerationResult(id: string, attempt = 0) {
     submitting.value = false;
     clearPollingTimer();
     ElMessage.error(getErrorMessage(error, '生成结果查询失败'));
+    if (attempt >= Math.ceil(180000 / generationPollIntervalMs)) {
+      return;
+    }
+    scheduleGenerationPolling(id, attempt + 1);
   }
 }
 
 async function handleGenerate() {
+  if (submitting.value) {
+    return;
+  }
   if (!selectedConfig.value) {
     ElMessage.warning('请先选择 API 配置');
     return;
@@ -236,10 +256,17 @@ async function handleGenerate() {
 
 onMounted(async () => {
   // 默认选中第一条配置，减少首次进入生成页的操作步骤。
-  configs.value = await listApiConfigs();
-  if (configs.value[0]) {
-    form.configId = configs.value[0].id;
-    form.provider = configs.value[0].provider;
+  configsLoading.value = true;
+  try {
+    configs.value = await listApiConfigs();
+    if (configs.value[0]) {
+      form.configId = configs.value[0].id;
+      form.provider = configs.value[0].provider;
+    }
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, 'API 配置加载失败'));
+  } finally {
+    configsLoading.value = false;
   }
 });
 

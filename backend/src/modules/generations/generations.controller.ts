@@ -78,7 +78,7 @@ export class GenerationsController {
 
   private handleImageStreamError(response: Response) {
     if (response.headersSent) {
-      response.destroy();
+      response.end();
       return;
     }
     response.status(404).send('图片文件不存在');

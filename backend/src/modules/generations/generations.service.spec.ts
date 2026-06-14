@@ -209,35 +209,33 @@ describe('GenerationsService', () => {
     expect(staleCutoff.getTime()).toBeLessThanOrEqual(beforeCleanup);
   });
 
-  it('loads list page ids before reading full generation records', async () => {
+  it('loads list page records with the configured filters and pagination', async () => {
     const { service, prisma } = createService();
     const firstRecord = createPendingRecord('first-generation-id');
     const secondRecord = createPendingRecord('second-generation-id');
     prisma.imageGeneration.findMany
-      .mockResolvedValueOnce([{ id: firstRecord.id }, { id: secondRecord.id }])
-      // 模拟数据库按 in 查询返回顺序不稳定，service 需要按分页 id 顺序还原。
-      .mockResolvedValueOnce([secondRecord, firstRecord]);
+      .mockResolvedValueOnce([firstRecord, secondRecord]);
     prisma.imageGeneration.count.mockResolvedValue(2);
 
-    const result = await service.list(user, { page: 1, pageSize: 12 });
+    const result = await service.list(user, { page: 1, pageSize: 12, provider: Provider.GPT, status: GenerationStatus.PENDING });
 
     expect(result.items).toEqual([firstRecord, secondRecord]);
     expect(result.total).toBe(2);
-    expect(prisma.imageGeneration.findMany).toHaveBeenNthCalledWith(1, {
+    expect(prisma.imageGeneration.findMany).toHaveBeenCalledWith({
       where: {
         userId: user.id,
-        provider: undefined,
-        status: undefined,
+        provider: Provider.GPT,
+        status: GenerationStatus.PENDING,
       },
       orderBy: { createdAt: 'desc' },
       skip: 0,
       take: 12,
-      select: { id: true },
     });
-    expect(prisma.imageGeneration.findMany).toHaveBeenNthCalledWith(2, {
+    expect(prisma.imageGeneration.count).toHaveBeenCalledWith({
       where: {
-        id: { in: [firstRecord.id, secondRecord.id] },
         userId: user.id,
+        provider: Provider.GPT,
+        status: GenerationStatus.PENDING,
       },
     });
   });

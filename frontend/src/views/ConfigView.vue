@@ -7,28 +7,28 @@
 
     <div class="content-panel p-5">
       <el-form :model="form" label-position="top" class="grid gap-4 md:grid-cols-2">
-        <el-form-item label="配置名称">
-          <el-input v-model="form.name" placeholder="OpenAI 主账号" />
+        <el-form-item label="配置名称" :error="formErrors.name">
+          <el-input v-model="form.name" placeholder="OpenAI 主账号" @input="clearFormError('name')" />
         </el-form-item>
         <el-form-item label="类型">
-          <el-select v-model="form.provider" class="w-full" @change="applyProviderDefaults">
+          <el-select v-model="form.provider" class="w-full" :disabled="loading" @change="applyProviderDefaults">
             <el-option label="GPT" value="GPT" />
             <el-option label="Nano Banana" value="NANO_BANANA" />
           </el-select>
         </el-form-item>
-        <el-form-item label="请求地址">
-          <el-input v-model="form.baseUrl" placeholder="例如：https://api.openai.com/v1" />
+        <el-form-item label="请求地址" :error="formErrors.baseUrl">
+          <el-input v-model="form.baseUrl" placeholder="例如：https://api.openai.com/v1" @input="clearFormError('baseUrl')" />
         </el-form-item>
-        <el-form-item label="模型">
-          <el-input v-model="form.model" />
+        <el-form-item label="模型" :error="formErrors.model">
+          <el-input v-model="form.model" @input="clearFormError('model')" />
         </el-form-item>
-        <el-form-item label="API Key" class="md:col-span-2">
-          <el-input v-model="form.apiKey" type="password" show-password :placeholder="apiKeyPlaceholder" />
+        <el-form-item label="API Key" :error="formErrors.apiKey" class="md:col-span-2">
+          <el-input v-model="form.apiKey" type="password" show-password :placeholder="apiKeyPlaceholder" @input="clearFormError('apiKey')" />
         </el-form-item>
       </el-form>
       <div class="flex justify-end gap-2">
-        <el-button v-if="editingConfigId" @click="cancelEdit">取消编辑</el-button>
-        <el-button type="primary" :icon="editingConfigId ? Edit : Plus" @click="handleSave">
+        <el-button v-if="editingConfigId" :disabled="loading" @click="cancelEdit">取消编辑</el-button>
+        <el-button type="primary" :icon="editingConfigId ? Edit : Plus" :loading="loading" :disabled="loading" @click="handleSave">
           {{ editingConfigId ? '保存修改' : '保存配置' }}
         </el-button>
       </div>
@@ -44,8 +44,8 @@
         <el-table-column prop="baseUrl" label="请求地址" min-width="260" />
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link @click="startEdit(row)">编辑</el-button>
-            <el-button type="danger" link @click="handleDelete(row.id)">删除</el-button>
+            <el-button type="primary" link :disabled="loading || deletingConfigId === row.id" @click="startEdit(row)">编辑</el-button>
+            <el-button type="danger" link :loading="deletingConfigId === row.id" :disabled="loading || deletingConfigId === row.id" @click="handleDelete(row.id)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -58,12 +58,22 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Edit, Plus } from '@element-plus/icons-vue';
 import { deleteApiConfig, listApiConfigs, saveApiConfig } from '../utils/api-config-store';
+import { getErrorMessage } from '../api/http';
 import type { ApiConfig, Provider } from '../types';
 
 // 本地浏览器保存的配置列表，不从后端同步，避免泄露用户私有 Key。
 const configs = ref<ApiConfig[]>([]);
-// 非空表示当前处于编辑模式，保存时按该 id 覆盖原配置。
 const editingConfigId = ref('');
+const loading = ref(false);
+const deletingConfigId = ref('');
+const formErrors = reactive({
+  name: '',
+  baseUrl: '',
+  model: '',
+  apiKey: '',
+});
+
+type FormErrorField = keyof typeof formErrors;
 
 // 默认值对应计划中的官方模型，用户可按代理服务自行修改。
 const providerDefaults: Record<Provider, { baseUrl: string; model: string }> = {
@@ -94,19 +104,62 @@ function formatProvider(provider: Provider) {
 
 function applyProviderDefaults() {
   // 切换 provider 时刷新推荐地址和模型，用户仍可手动覆盖。
+  clearFormError('baseUrl');
+  clearFormError('model');
   const defaults = providerDefaults[form.provider];
   form.baseUrl = defaults.baseUrl;
   form.model = defaults.model;
 }
 
+function clearFormError(field: FormErrorField) {
+  formErrors[field] = '';
+}
+
+function clearFormErrors() {
+  clearFormError('name');
+  clearFormError('baseUrl');
+  clearFormError('model');
+  clearFormError('apiKey');
+}
+
+function validateForm() {
+  clearFormErrors();
+  if (!form.name.trim()) {
+    formErrors.name = '请填写配置名称';
+    return false;
+  }
+  try {
+    new URL(form.baseUrl);
+  } catch {
+    formErrors.baseUrl = '请输入有效请求地址';
+    return false;
+  }
+  if (!form.model.trim()) {
+    formErrors.model = '请填写模型';
+    return false;
+  }
+  if (!editingConfigId.value && !form.apiKey.trim()) {
+    formErrors.apiKey = '新增配置需要填写 API Key';
+    return false;
+  }
+  return true;
+}
+
 async function loadConfigs() {
   // 每次新增、编辑、删除后重新读取，确保表格与 IndexedDB 一致。
-  configs.value = await listApiConfigs();
+  loading.value = true;
+  try {
+    configs.value = await listApiConfigs();
+  } finally {
+    loading.value = false;
+  }
 }
 
 function resetForm() {
   // 表单复位到新增模式，保留默认 GPT 配置便于继续录入。
   editingConfigId.value = '';
+  deletingConfigId.value = '';
+  clearFormErrors();
   form.name = '';
   form.provider = 'GPT';
   form.baseUrl = providerDefaults.GPT.baseUrl;
@@ -117,6 +170,8 @@ function resetForm() {
 function startEdit(config: ApiConfig) {
   // 编辑只回填非敏感字段，避免把已保存的 API Key 明文展示在页面上。
   editingConfigId.value = config.id;
+  deletingConfigId.value = '';
+  clearFormErrors();
   form.name = config.name;
   form.provider = config.provider;
   form.baseUrl = config.baseUrl;
@@ -130,26 +185,46 @@ function cancelEdit() {
 }
 
 async function handleSave() {
-  if (!form.name || !form.baseUrl || !form.model || (!editingConfigId.value && !form.apiKey)) {
-    ElMessage.warning('请填写完整配置');
+  if (loading.value) {
+    return;
+  }
+  if (!validateForm()) {
     return;
   }
 
   // saveApiConfig 内部负责新增加密、编辑沿用旧 Key 等边界处理。
-  await saveApiConfig({ ...form, id: editingConfigId.value || undefined });
-  ElMessage.success(editingConfigId.value ? '配置已更新' : '配置已保存');
-  resetForm();
-  await loadConfigs();
+  loading.value = true;
+  try {
+    await saveApiConfig({ ...form, id: editingConfigId.value || undefined });
+    ElMessage.success(editingConfigId.value ? '配置已更新' : '配置已保存');
+    resetForm();
+    await loadConfigs();
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, editingConfigId.value ? '配置更新失败' : '配置保存失败'));
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function handleDelete(id: string) {
+  if (loading.value || deletingConfigId.value) {
+    return;
+  }
+
   // 删除配置会移除本地密文，之后生成需要用户重新填写 API Key。
   await ElMessageBox.confirm('删除后需要重新填写 API Key，确认删除？', '删除配置', { type: 'warning' });
-  await deleteApiConfig(id);
-  if (editingConfigId.value === id) {
-    resetForm();
+  deletingConfigId.value = id;
+  try {
+    await deleteApiConfig(id);
+    if (editingConfigId.value === id) {
+      resetForm();
+    }
+    await loadConfigs();
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '配置删除失败'));
+  } finally {
+    deletingConfigId.value = '';
   }
-  await loadConfigs();
 }
 
 onMounted(loadConfigs);

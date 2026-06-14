@@ -6,16 +6,16 @@
         <p class="muted-text mt-1">分页查看当前账号生成的图片，点击图片可放大预览。</p>
       </div>
       <div class="flex gap-3">
-        <el-select v-model="filters.provider" clearable placeholder="类型" class="w-40" @change="loadGenerations(1)">
+        <el-select v-model="filters.provider" clearable placeholder="类型" class="w-40" :disabled="loading" @change="resetPageAndLoad">
           <el-option label="GPT" value="GPT" />
           <el-option label="Nano Banana" value="NANO_BANANA" />
         </el-select>
-        <el-select v-model="filters.status" clearable placeholder="状态" class="w-40" @change="loadGenerations(1)">
+        <el-select v-model="filters.status" clearable placeholder="状态" class="w-40" :disabled="loading" @change="resetPageAndLoad">
           <el-option label="成功" value="SUCCESS" />
           <el-option label="失败" value="FAILED" />
           <el-option label="处理中" value="PENDING" />
         </el-select>
-        <el-button :icon="Refresh" :loading="loading" @click="loadGenerations(page)">刷新</el-button>
+        <el-button :icon="Refresh" :loading="loading" :disabled="loading" @click="loadGenerations(page)">刷新</el-button>
       </div>
     </div>
 
@@ -42,8 +42,8 @@
             {{ item.model }} · 参考图 {{ item.referenceCount }} 张 · {{ item.durationMs ?? '-' }} ms
           </div>
           <div class="mt-3 flex justify-end gap-3">
-            <el-button type="primary" link @click="openDetail(item)">查看</el-button>
-            <el-button type="danger" link @click="handleDelete(item.id)">删除</el-button>
+            <el-button type="primary" link :disabled="loading || detailLoading" @click="openDetail(item)">查看</el-button>
+            <el-button type="danger" link :disabled="loading" @click="handleDelete(item.id)">删除</el-button>
           </div>
         </div>
       </div>
@@ -205,6 +205,11 @@ async function loadGenerations(targetPage = page.value) {
   }
 }
 
+function resetPageAndLoad() {
+  page.value = 1;
+  void loadGenerations(1);
+}
+
 async function openDetail(item: ImageGeneration) {
   // 先打开弹窗再拉详情，避免网络慢时用户误以为点击无效。
   detailVisible.value = true;
@@ -220,6 +225,10 @@ async function openDetail(item: ImageGeneration) {
 }
 
 async function handleDelete(id: string) {
+  if (loading.value) {
+    return;
+  }
+
   // 删除是不可恢复操作，先让用户确认，再调用后端删除记录和文件。
   await ElMessageBox.confirm('删除后无法在列表中恢复，确认删除？', '删除图片记录', { type: 'warning' });
   await deleteGeneration(id);

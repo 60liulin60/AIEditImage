@@ -55,5 +55,7 @@ model ImageGeneration {
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+  @@index([userId, provider, createdAt])
+  @@index([userId, status, createdAt])
   @@index([provider, status])
 }
