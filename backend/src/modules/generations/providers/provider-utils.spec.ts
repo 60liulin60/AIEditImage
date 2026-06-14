@@ -2,6 +2,7 @@ import { BadGatewayException } from '@nestjs/common';
 import {
   assertPublicProviderUrl,
   detectImageBytes,
+  extractProviderMessage,
   isPrivateProviderHost,
   PRIVATE_PROVIDER_HOST_ERROR,
   UNSUPPORTED_PROVIDER_URL_PROTOCOL_ERROR,
@@ -38,5 +39,21 @@ describe('provider-utils', () => {
     expect(() => assertPublicProviderUrl('not-a-url')).toThrow(UNSUPPORTED_PROVIDER_URL_PROTOCOL_ERROR);
     expect(() => assertPublicProviderUrl('file:///etc/passwd')).toThrow(UNSUPPORTED_PROVIDER_URL_PROTOCOL_ERROR);
     expect(() => assertPublicProviderUrl('http://[::ffff:127.0.0.1]/image.png')).toThrow(PRIVATE_PROVIDER_HOST_ERROR);
+  });
+
+  it('prefers specific provider details over generic openai_error placeholders', () => {
+    expect(
+      extractProviderMessage(
+        {
+          error: {
+            message: 'openai_error',
+            detail: 'image field is required',
+          },
+        },
+        'fallback',
+      ),
+    ).toBe('image field is required');
+
+    expect(extractProviderMessage({ error: 'openai_error' }, 'fallback')).toBe('openai_error');
   });
 });

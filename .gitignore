@@ -12,3 +12,4 @@ backend/mysql/*
 frontend/dist/
 *.log
 .claude
+.codegraph

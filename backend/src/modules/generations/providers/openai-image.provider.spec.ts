@@ -88,7 +88,7 @@ describe('OpenAiImageProvider', () => {
     );
   });
 
-  it('uses image edits with image array fields when reference images are provided', async () => {
+  it('uses plain image fields first when a single reference image is provided', async () => {
     mockJsonResponse({
       data: [{ b64_json: PNG_BASE64 }],
     });
@@ -103,7 +103,61 @@ describe('OpenAiImageProvider', () => {
     );
     expect(request.body.get('model')).toBe('gpt-image-2');
     expect(request.body.get('output_format')).toBe('png');
-    expect(request.body.getAll('image[]')).toHaveLength(1);
+    expect(request.body.getAll('image')).toHaveLength(1);
+    expect(request.body.getAll('image[]')).toHaveLength(0);
+  });
+
+  it('retries image edits with image array fields when a compatible gateway rejects plain image fields', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: jest
+          .fn()
+          .mockResolvedValue(JSON.stringify({ error: { message: 'Unknown parameter: image', param: 'image' } })),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: jest.fn().mockResolvedValue(JSON.stringify({ data: [{ b64_json: PNG_BASE64 }] })),
+      }) as never;
+
+    const provider = new OpenAiImageProvider();
+    const result = await provider.generate(createInput([createPngReferenceImage()]));
+
+    expect(result.mimeType).toBe('image/png');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+
+    const firstRequest = (global.fetch as jest.Mock).mock.calls[0][1] as { body: FormData };
+    const secondRequest = (global.fetch as jest.Mock).mock.calls[1][1] as { body: FormData };
+    expect(firstRequest.body.getAll('image')).toHaveLength(1);
+    expect(firstRequest.body.getAll('image[]')).toHaveLength(0);
+    expect(secondRequest.body.getAll('image')).toHaveLength(0);
+    expect(secondRequest.body.getAll('image[]')).toHaveLength(1);
+  });
+
+  it('retries image edits with image array fields when the gateway only returns openai_error', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: jest.fn().mockResolvedValue(JSON.stringify({ error: 'openai_error' })),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: jest.fn().mockResolvedValue(JSON.stringify({ data: [{ b64_json: PNG_BASE64 }] })),
+      }) as never;
+
+    const provider = new OpenAiImageProvider();
+    await provider.generate(createInput([createPngReferenceImage()]));
+
+    const firstRequest = (global.fetch as jest.Mock).mock.calls[0][1] as { body: FormData };
+    const secondRequest = (global.fetch as jest.Mock).mock.calls[1][1] as { body: FormData };
+    expect(firstRequest.body.getAll('image')).toHaveLength(1);
+    expect(secondRequest.body.getAll('image[]')).toHaveLength(1);
   });
 
   it('accepts responses-style image output from compatible GPT gateways', async () => {

@@ -14,6 +14,8 @@ const IMAGE_BYTE_TYPES: ImageByteInfo[] = [
 export const PRIVATE_PROVIDER_HOST_ERROR = 'Provider 地址不允许访问本地或内网地址';
 export const UNSUPPORTED_PROVIDER_URL_PROTOCOL_ERROR = 'Provider 图片地址协议不受支持';
 const PROVIDER_REQUEST_TIMEOUT_MS = 60000;
+// 这类值通常只是网关占位错误，不足以指导排障；如果还有更具体字段，优先返回具体字段。
+const GENERIC_PROVIDER_ERROR_MESSAGES = new Set(['error', 'failed', 'unknown error', 'provider_error', 'openai_error']);
 
 export function joinApiUrl(baseUrl: string, path: string): string {
   // 去掉首尾多余斜杠，避免用户填入 /v1/ 时拼接出双斜杠。
@@ -26,14 +28,41 @@ export function getImageExtension(mimeType: string): string {
 }
 
 export function extractProviderMessage(payload: unknown, fallback: string): string {
+  if (typeof payload === 'string' && payload.trim()) {
+    return payload.trim();
+  }
+
   if (payload && typeof payload === 'object') {
     const record = payload as Record<string, unknown>;
     const error = record.error as Record<string, unknown> | undefined;
-    if (typeof error?.message === 'string') {
-      return error.message;
+
+    const candidates = [
+      error?.detail,
+      error?.details,
+      error?.reason,
+      error?.message,
+      record.detail,
+      record.details,
+      record.reason,
+      record.message,
+      record.error_description,
+      record.msg,
+      error?.code,
+      error?.type,
+      record.code,
+      typeof record.error === 'string' ? record.error : undefined,
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    const specificMessage = candidates.find((message) => !GENERIC_PROVIDER_ERROR_MESSAGES.has(message.toLowerCase()));
+    if (specificMessage) {
+      return specificMessage;
     }
-    if (typeof record.message === 'string') {
-      return record.message;
+
+    if (candidates[0]) {
+      return candidates[0];
     }
   }
   return fallback;

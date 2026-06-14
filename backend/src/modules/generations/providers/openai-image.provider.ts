@@ -31,6 +31,11 @@ interface ParsedProviderResponse {
 
 // GPT 图片接口默认保存 PNG；后续如果前端开放格式选择，只需要替换这个常量来源。
 const DEFAULT_OUTPUT_FORMAT = 'png';
+// 先按参考实现使用 image[]；部分兼容网关只认重复的 image 字段，失败时再回退重试。
+const PRIMARY_EDIT_IMAGE_FIELD = 'image[]';
+const FALLBACK_EDIT_IMAGE_FIELD = 'image';
+// 某些兼容网关图生图失败时只回 openai_error，这类值信息量太低，需要尝试另一种字段名。
+const GENERIC_EDIT_FIELD_ERRORS = new Set(['openai_error', 'provider_error']);
 
 @Injectable()
 export class OpenAiImageProvider {
@@ -96,7 +101,20 @@ export class OpenAiImageProvider {
     });
   }
 
-  private requestEdit(url: string, input: ImageProviderInput) {
+  private async requestEdit(url: string, input: ImageProviderInput) {
+    // 单图兼容性通常更偏向 image，多图仍优先按 image[] 发送，尽量贴近上游常见实现。
+    const primaryFieldName = input.referenceImages.length === 1 ? FALLBACK_EDIT_IMAGE_FIELD : PRIMARY_EDIT_IMAGE_FIELD;
+    const fallbackFieldName = primaryFieldName === PRIMARY_EDIT_IMAGE_FIELD ? FALLBACK_EDIT_IMAGE_FIELD : PRIMARY_EDIT_IMAGE_FIELD;
+    const primaryResponse = await this.sendEditRequest(url, input, primaryFieldName);
+    if (!(await this.shouldRetryEditWithFallbackField(primaryResponse))) {
+      return primaryResponse;
+    }
+
+    // 仅在上游明确提示字段兼容问题，或只返回笼统网关错误时回退，避免把普通业务错误误判成字段问题。
+    return this.sendEditRequest(url, input, fallbackFieldName);
+  }
+
+  private sendEditRequest(url: string, input: ImageProviderInput, imageFieldName: string) {
     const formData = new FormData();
     formData.append('model', input.model);
     formData.append('prompt', input.prompt);
@@ -105,8 +123,8 @@ export class OpenAiImageProvider {
 
     for (const image of input.referenceImages) {
       const bytes = new Uint8Array(image.buffer);
-      // 参考项目和官方示例都用 image[] 表达多参考图，避免兼容网关只识别数组字段。
-      formData.append('image[]', new Blob([bytes], { type: image.mimeType }), image.filename);
+      // 同一张参考图在不同网关上字段名可能不同，这里由调用方决定当前使用的字段名。
+      formData.append(imageFieldName, new Blob([bytes], { type: image.mimeType }), image.filename);
     }
 
     return fetch(url, {
@@ -117,6 +135,45 @@ export class OpenAiImageProvider {
       },
       body: formData,
     });
+  }
+
+  private async shouldRetryEditWithFallbackField(response: Response): Promise<boolean> {
+    if (response.ok) {
+      return false;
+    }
+
+    // 线上真实 Response 可 clone；测试桩或极简 fetch 实现没有 clone 时，退化为直接读取当前响应。
+    const responseToParse = typeof response.clone === 'function' ? response.clone() : response;
+    const parsedResponse = await this.parseProviderResponse(responseToParse);
+    return this.isImageFieldCompatibilityError(parsedResponse.payload);
+  }
+
+  private isImageFieldCompatibilityError(payload: unknown): boolean {
+    if (!payload || typeof payload !== 'object') {
+      return false;
+    }
+
+    const record = payload as Record<string, unknown>;
+    const errorRecord = record.error && typeof record.error === 'object' ? (record.error as Record<string, unknown>) : undefined;
+    const errorParam = typeof errorRecord?.param === 'string' ? errorRecord.param.trim().toLowerCase() : '';
+    const providerMessage = extractProviderMessage(payload, '').trim().toLowerCase();
+    // 只对“字段名不认识 / 必填字段缺失”这类参数错误回退，避免吞掉真实的图片内容错误。
+    const isFieldMismatchMessage =
+      providerMessage.includes('unknown parameter') ||
+      providerMessage.includes('unexpected field') ||
+      providerMessage.includes('missing required parameter') ||
+      providerMessage.includes('required parameter') ||
+      providerMessage.includes('field required');
+    const isGenericGatewayError = GENERIC_EDIT_FIELD_ERRORS.has(providerMessage);
+
+    if (errorParam === PRIMARY_EDIT_IMAGE_FIELD.toLowerCase()) {
+      return true;
+    }
+
+    return Boolean(
+      isGenericGatewayError ||
+        (isFieldMismatchMessage && (providerMessage.includes(PRIMARY_EDIT_IMAGE_FIELD) || providerMessage.includes(FALLBACK_EDIT_IMAGE_FIELD) || errorParam === FALLBACK_EDIT_IMAGE_FIELD)),
+    );
   }
 
   private async parseProviderResponse(response: Response): Promise<ParsedProviderResponse> {
