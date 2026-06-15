@@ -201,10 +201,10 @@ async function pollGenerationResult(id: string, attempt = 0) {
 
     scheduleGenerationPolling(id, attempt + 1);
   } catch (error) {
-    submitting.value = false;
-    clearPollingTimer();
     ElMessage.error(getErrorMessage(error, '生成结果查询失败'));
     if (attempt >= Math.ceil(180000 / generationPollIntervalMs)) {
+      submitting.value = false;
+      clearPollingTimer();
       return;
     }
     scheduleGenerationPolling(id, attempt + 1);

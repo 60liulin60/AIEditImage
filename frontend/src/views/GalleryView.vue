@@ -278,9 +278,21 @@ function getRevisedPrompts(record: ImageGeneration | null): string[] {
 
 function collectStringValuesByKey(value: unknown, key: string): string[] {
   const values: string[] = [];
-  const visit = (node: unknown) => {
+  const maxDepth = 12;
+  const maxNodes = 1000;
+  let visitedNodes = 0;
+
+  const visit = (node: unknown, depth = 0) => {
+    if (visitedNodes >= maxNodes) {
+      return;
+    }
+    visitedNodes += 1;
+
+    if (depth > maxDepth) {
+      return;
+    }
     if (Array.isArray(node)) {
-      node.forEach(visit);
+      node.forEach((item) => visit(item, depth + 1));
       return;
     }
     if (!isJsonRecord(node)) {
@@ -291,7 +303,7 @@ function collectStringValuesByKey(value: unknown, key: string): string[] {
     if (typeof fieldValue === 'string' && fieldValue.trim()) {
       values.push(fieldValue);
     }
-    Object.values(node).forEach(visit);
+    Object.values(node).forEach((child) => visit(child, depth + 1));
   };
 
   visit(value);

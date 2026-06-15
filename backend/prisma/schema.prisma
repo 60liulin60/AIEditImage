@@ -57,5 +57,6 @@ model ImageGeneration {
   @@index([userId, createdAt])
   @@index([userId, provider, createdAt])
   @@index([userId, status, createdAt])
+  @@index([userId, provider, status, createdAt])
   @@index([provider, status])
 }

@@ -1,5 +1,7 @@
 import { Provider } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, IsUrl, MinLength } from 'class-validator';
+import { IsEnum, IsIn, IsOptional, IsString, IsUrl, MaxLength, MinLength } from 'class-validator';
+
+const ALLOWED_GENERATION_SIZES = ['1024x1024', '1024x1536', '1536x1024'] as const;
 
 export class CreateGenerationDto {
   @IsEnum(Provider)
@@ -18,9 +20,10 @@ export class CreateGenerationDto {
 
   @IsString()
   @MinLength(1)
+  @MaxLength(2000)
   prompt!: string;
 
   @IsOptional()
-  @IsString()
+  @IsIn(ALLOWED_GENERATION_SIZES)
   size?: string;
 }

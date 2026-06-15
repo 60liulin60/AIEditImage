@@ -182,6 +182,16 @@ async function writeEnv(databaseUrl) {
   );
 }
 
+function maskDatabaseUrl(databaseUrl) {
+  try {
+    const url = new URL(databaseUrl);
+    url.password = '[redacted]';
+    return url.toString();
+  } catch {
+    return 'mysql://[redacted]';
+  }
+}
+
 async function prepareDatabase() {
   await ensureDataDir();
   const existingState = await readState();
@@ -211,7 +221,7 @@ async function prepareDatabase() {
   );
 
   await writeEnv(databaseUrl);
-  console.log(`MySQL 连接信息已准备：${databaseUrl}`);
+  console.log(`MySQL 连接信息已准备：${maskDatabaseUrl(databaseUrl)}`);
 }
 
 async function startDatabase() {
@@ -222,7 +232,7 @@ async function startDatabase() {
   const databaseUrl = buildDatabaseUrl(user, password);
 
   if (await isPortOpen(port)) {
-    console.log(`检测到 MySQL 已在 localhost:${port} 运行：${databaseUrl}`);
+    console.log(`检测到 MySQL 已在 localhost:${port} 运行：${maskDatabaseUrl(databaseUrl)}`);
     console.log('保持该命令运行，按 Ctrl+C 退出。');
     setInterval(() => {}, 60_000);
     return;
@@ -267,7 +277,7 @@ async function startDatabase() {
     );
     await writeEnv(databaseUrl);
 
-    console.log(`MySQL 已启动：${databaseUrl}`);
+    console.log(`MySQL 已启动：${maskDatabaseUrl(databaseUrl)}`);
     console.log(`数据目录：${mysqlDataDir}`);
     console.log('保持该命令运行，后端即可连接数据库。按 Ctrl+C 停止。');
 

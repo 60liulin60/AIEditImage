@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { getJwtSecret } from './auth-config';
 import { JwtStrategy } from './jwt.strategy';
 
 @Module({
@@ -12,8 +13,7 @@ import { JwtStrategy } from './jwt.strategy';
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        // 生产环境必须在 .env 中提供 JWT_SECRET；开发兜底只用于本地快速启动。
-        secret: configService.get<string>('JWT_SECRET') ?? 'dev-only-change-me',
+        secret: getJwtSecret(configService),
         signOptions: { expiresIn: '7d' },
       }),
     }),

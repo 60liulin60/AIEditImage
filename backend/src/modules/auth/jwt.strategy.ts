@@ -5,6 +5,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { AUTH_COOKIE_NAME } from '../../common/auth.constants';
 import type { AuthenticatedUser } from '../../common/types';
 import { PrismaService } from '../prisma/prisma.service';
+import { getJwtSecret } from './auth-config';
 
 interface JwtPayload {
   sub: string;
@@ -26,7 +27,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([cookieExtractor, ExtractJwt.fromAuthHeaderAsBearerToken()]),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET') ?? 'dev-only-change-me',
+      secretOrKey: getJwtSecret(configService),
     });
   }
 

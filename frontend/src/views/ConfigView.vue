@@ -2,7 +2,7 @@
   <section class="space-y-5">
     <div>
       <h1 class="text-2xl font-semibold">API 配置</h1>
-      <p class="muted-text mt-1">请求地址、模型和 Key 保存在当前浏览器，Key 会先加密再写入 IndexedDB。</p>
+      <p class="muted-text mt-1">请求地址、模型和 Key 保存在当前浏览器，Key 会先加密再写入 IndexedDB；本地加密不能抵御浏览器 XSS。</p>
     </div>
 
     <div class="content-panel p-5">
@@ -95,7 +95,9 @@ const form = reactive({
 
 // 编辑模式下允许留空沿用原 Key，新增模式仍提示保存时会加密。
 const apiKeyPlaceholder = computed(() =>
-  editingConfigId.value ? '留空表示继续使用原 API Key，填写则替换' : '保存时会加密到本地浏览器',
+  editingConfigId.value
+    ? '留空表示继续使用原 API Key，填写则替换'
+    : '保存时会加密到本地浏览器；请勿在不信任的站点输入 Key',
 );
 
 function formatProvider(provider: Provider) {
@@ -129,7 +131,11 @@ function validateForm() {
     return false;
   }
   try {
-    new URL(form.baseUrl);
+    const parsedUrl = new URL(form.baseUrl);
+    if (!['http:', 'https:'].includes(parsedUrl.protocol) || parsedUrl.username || parsedUrl.password) {
+      formErrors.baseUrl = '请求地址仅支持 http 或 https，且不能包含账号密码';
+      return false;
+    }
   } catch {
     formErrors.baseUrl = '请输入有效请求地址';
     return false;

@@ -49,8 +49,8 @@ const loading = ref(false);
 
 // 登录表单只保存页面临时状态，密码不会写入本地存储。
 const form = reactive({
-  email: "admin@example.com",
-  password: "change-me-123456",
+  email: '',
+  password: '',
 });
 
 async function handleLogin() {

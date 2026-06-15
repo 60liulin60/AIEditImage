@@ -230,6 +230,22 @@ describe('GenerationsService', () => {
       orderBy: { createdAt: 'desc' },
       skip: 0,
       take: 12,
+      select: {
+        id: true,
+        userId: true,
+        provider: true,
+        model: true,
+        baseUrl: true,
+        prompt: true,
+        size: true,
+        referenceCount: true,
+        status: true,
+        imagePath: true,
+        mimeType: true,
+        durationMs: true,
+        errorMessage: true,
+        createdAt: true,
+      },
     });
     expect(prisma.imageGeneration.count).toHaveBeenCalledWith({
       where: {

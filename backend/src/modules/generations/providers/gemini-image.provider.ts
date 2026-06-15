@@ -11,11 +11,14 @@ import {
 @Injectable()
 export class GeminiImageProvider {
   async generate(input: ImageProviderInput): Promise<ImageProviderResult> {
-    const url = `${joinApiUrl(input.baseUrl, `/models/${input.model}:generateContent`)}?key=${encodeURIComponent(input.apiKey)}`;
+    const url = joinApiUrl(input.baseUrl, `/models/${input.model}:generateContent`);
     const response = await fetch(url, {
       method: 'POST',
       signal: createProviderAbortSignal(),
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': input.apiKey,
+      },
       body: JSON.stringify({
         contents: [
           {

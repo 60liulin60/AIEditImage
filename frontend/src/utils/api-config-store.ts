@@ -111,9 +111,12 @@ export async function saveApiConfig(draft: ApiConfigDraft) {
     throw new Error('API Key 不能为空');
   }
   // 只有用户输入新 Key 时才重新加密，降低误操作覆盖原 Key 的风险。
+  if (!existingConfig) {
+    throw new Error('原始配置不存在，请重新新增 API 配置');
+  }
   const encrypted = draft.apiKey
     ? await encryptApiKey(draft.apiKey)
-    : { encryptedKey: existingConfig!.encryptedKey, iv: existingConfig!.iv };
+    : { encryptedKey: existingConfig.encryptedKey, iv: existingConfig.iv };
   const config: ApiConfig = {
     id: draft.id ?? crypto.randomUUID(),
     name: draft.name,

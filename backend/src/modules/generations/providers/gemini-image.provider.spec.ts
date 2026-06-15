@@ -43,8 +43,11 @@ describe('GeminiImageProvider', () => {
     });
 
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=test-key',
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+        headers: expect.objectContaining({ 'x-goog-api-key': 'test-key' }),
+      }),
     );
   });
 
