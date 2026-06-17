@@ -77,13 +77,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import type { UploadUserFile } from 'element-plus';
-import { ElMessage } from 'element-plus';
 import { MagicStick, UploadFilled } from '@element-plus/icons-vue';
 import { createGeneration, fetchGeneration, getGenerationImageUrl } from '../api/generations';
 import { getErrorMessage } from '../api/http';
 import { promptTemplates } from '../constants/prompt-templates';
 import type { ApiConfig, Provider } from '../types';
 import { decryptApiKey, listApiConfigs } from '../utils/api-config-store';
+import { formatProvider } from '../utils/format';
 
 const configs = ref<ApiConfig[]>([]);
 const configsLoading = ref(false);
@@ -120,10 +120,6 @@ const selectedConfig = computed(() => configs.value.find((config) => config.id =
 const referenceLimit = computed(() => (form.provider === 'GPT' ? 16 : 3));
 // 模板只展示当前 provider 可用的内容，避免误用不兼容提示词。
 const filteredTemplates = computed(() => promptTemplates.filter((template) => template.provider === form.provider));
-
-function formatProvider(provider: Provider) {
-  return provider === 'GPT' ? 'GPT' : 'Nano Banana';
-}
 
 function handleConfigChange() {
   if (selectedConfig.value) {

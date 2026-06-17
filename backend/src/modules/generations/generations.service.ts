@@ -8,6 +8,7 @@ import type { AuthenticatedUser } from '../../common/types';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   GENERATION_MAX_CONCURRENCY,
+  GENERATION_QUEUE_MAX_LENGTH,
   GENERATION_STALE_PENDING_MS,
   GENERATION_TASK_TIMEOUT_MS,
   GPT_MAX_REFERENCE_IMAGES,
@@ -66,6 +67,11 @@ export class GenerationsService implements OnModuleInit {
     this.validateProviderBaseUrl(dto.baseUrl);
     this.validateReferenceLimit(dto.provider, files.length);
 
+    // 队列长度超限时拒绝新任务，避免内存堆积过多待处理任务。
+    if (this.generationQueue.length >= GENERATION_QUEUE_MAX_LENGTH) {
+      throw new BadRequestException('当前生成任务过多，请稍后重试');
+    }
+
     const startedAt = Date.now();
     // 请求返回后 Multer 生命周期结束，先把参考图数据整理成后台任务可直接使用的结构。
     const referenceImages = this.mapReferenceImages(files);
@@ -123,6 +129,11 @@ export class GenerationsService implements OnModuleInit {
     referenceImages: ReferenceImageInput[],
     startedAt: number,
   ) {
+    // 队列长度超限后不再入队，由外层 create 方法返回 503 提示用户。
+    if (this.generationQueue.length >= GENERATION_QUEUE_MAX_LENGTH) {
+      void this.markGenerationFailed(recordId, '当前生成任务过多，请稍后重试', Date.now() - startedAt);
+      return;
+    }
     this.generationQueue.push({ recordId, dto, referenceImages, startedAt });
     this.drainGenerationQueue();
   }
@@ -211,6 +222,7 @@ export class GenerationsService implements OnModuleInit {
         await this.deleteGeneratedFile(filename);
       }
       await this.markGenerationFailed(recordId, message, Date.now() - startedAt);
+      // 内部 catch 已处理数据库标记和文件清理；不再向上抛异常，避免 runGenerationTask 重复写入失败状态。
     }
   }
 

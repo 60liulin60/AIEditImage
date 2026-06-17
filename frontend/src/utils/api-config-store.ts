@@ -107,13 +107,16 @@ export async function saveApiConfig(draft: ApiConfigDraft) {
   const now = new Date().toISOString();
   // 编辑时允许 API Key 留空，用已有密文避免把空字符串写成新密钥。
   const existingConfig = draft.id ? await getApiConfig(draft.id) : undefined;
-  if (!draft.apiKey && !existingConfig) {
+
+  // 新增配置必须提供 API Key；编辑配置可留空沿用旧 Key。
+  if (!draft.id && !draft.apiKey) {
     throw new Error('API Key 不能为空');
   }
-  // 只有用户输入新 Key 时才重新加密，降低误操作覆盖原 Key 的风险。
-  if (!existingConfig) {
+  if (draft.id && !existingConfig) {
     throw new Error('原始配置不存在，请重新新增 API 配置');
   }
+
+  // 只有用户输入新 Key 时才重新加密，降低误操作覆盖原 Key 的风险。
   const encrypted = draft.apiKey
     ? await encryptApiKey(draft.apiKey)
     : { encryptedKey: existingConfig.encryptedKey, iv: existingConfig.iv };

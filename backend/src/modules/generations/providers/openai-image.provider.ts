@@ -318,15 +318,49 @@ export class OpenAiImageProvider {
   }
 
   private buildResponseSummary(payload: Record<string, unknown>, source: string): OpenAiResponseSummary {
-    // responseSummary 面向历史查看页，必须保留 GPT 返回的完整 JSON，避免 revised_prompt 等字段丢失。
+    // responseSummary 面向历史查看页，保留 GPT 返回的关键字段，但剥离大体积 base64 数据以减少存储开销。
     const revisedPrompts = this.extractRevisedPrompts(payload);
     const actualParams = this.extractActualParams(payload);
     return {
       source,
       ...(revisedPrompts.length > 0 ? { revisedPrompts } : {}),
       ...(Object.keys(actualParams).length > 0 ? { actualParams } : {}),
-      rawResponse: payload,
+      rawResponse: this.stripBase64FromPayload(payload),
     };
+  }
+
+  private stripBase64FromPayload(payload: Record<string, unknown>): Record<string, unknown> {
+    // 深拷贝并移除 base64 图片数据，避免数据库存储体积膨胀。
+    const clone = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>;
+    
+    // 移除 data[].b64_json
+    if (Array.isArray(clone.data)) {
+      clone.data = clone.data.map((item) => {
+        if (item && typeof item === 'object') {
+          const { b64_json, ...rest } = item as Record<string, unknown>;
+          return rest;
+        }
+        return item;
+      });
+    }
+
+    // 移除 output[].result 中的 base64 数据
+    if (Array.isArray(clone.output)) {
+      clone.output = clone.output.map((item) => {
+        if (item && typeof item === 'object') {
+          const { result, ...rest } = item as Record<string, unknown>;
+          return rest;
+        }
+        return item;
+      });
+    }
+
+    // 移除根级别的 b64_json
+    if ('b64_json' in clone) {
+      delete clone.b64_json;
+    }
+
+    return clone;
   }
 
   private extractRevisedPrompts(payload: Record<string, unknown>): string[] {

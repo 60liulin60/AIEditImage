@@ -25,6 +25,7 @@
           v-if="item.status === 'SUCCESS'"
           :src="getGenerationImageUrl(item.id)"
           fit="cover"
+          lazy
           class="gallery-image"
           :preview-src-list="[getGenerationImageUrl(item.id)]"
         />
@@ -139,11 +140,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { Refresh } from '@element-plus/icons-vue';
 import { deleteGeneration, fetchGeneration, fetchGenerations, getGenerationImageUrl } from '../api/generations';
 import { getErrorMessage } from '../api/http';
+import { formatProvider } from '../utils/format';
 import type { GenerationStatus, ImageGeneration, JsonRecord, Provider } from '../types';
 
 // 当前页图片记录，由筛选条件和分页共同决定。
@@ -163,6 +164,10 @@ const detailVisible = ref(false);
 // 单条详情可能包含较大的 GPT 原始响应，加载时给用户明确反馈。
 const detailLoading = ref(false);
 
+// PENDING 状态轮询定时器，组件卸载时清理。
+const pendingPollingTimers = new Map<string, number>();
+const PENDING_POLL_INTERVAL_MS = 5000;
+
 // 空字符串表示不过滤，发送请求前会在 API 层省略该字段。
 const filters = reactive({
   provider: '' as Provider | '',
@@ -171,10 +176,6 @@ const filters = reactive({
 
 const detailResponseSummary = computed(() => getSummaryWithoutRawResponse(detailRecord.value));
 const detailRevisedPrompts = computed(() => getRevisedPrompts(detailRecord.value));
-
-function formatProvider(provider: Provider) {
-  return provider === 'GPT' ? 'GPT' : 'Nano Banana';
-}
 
 function formatStatus(status: GenerationStatus) {
   const map: Record<GenerationStatus, string> = {
@@ -198,6 +199,7 @@ async function loadGenerations(targetPage = page.value) {
     generations.value = data.items;
     total.value = data.total;
     page.value = data.page;
+    checkAndStartPendingPolling();
   } catch (error) {
     ElMessage.error(getErrorMessage(error, '图片列表加载失败'));
   } finally {
@@ -320,6 +322,65 @@ function formatJson(value: unknown) {
 }
 
 onMounted(() => loadGenerations());
+
+onBeforeUnmount(() => {
+  // 清理所有 PENDING 轮询定时器。
+  for (const timer of pendingPollingTimers.values()) {
+    window.clearTimeout(timer);
+  }
+  pendingPollingTimers.clear();
+});
+
+function startPendingPolling(id: string) {
+  if (pendingPollingTimers.has(id)) {
+    return;
+  }
+
+  const poll = async () => {
+    try {
+      const record = await fetchGeneration(id);
+      if (record.status !== 'PENDING') {
+        // 状态已变化，更新本地记录并停止轮询。
+        const index = generations.value.findIndex((item) => item.id === id);
+        if (index !== -1) {
+          generations.value[index] = record;
+        }
+        pendingPollingTimers.delete(id);
+        if (record.status === 'SUCCESS') {
+          ElMessage.success('图片生成成功');
+        }
+        return;
+      }
+
+      // 仍为 PENDING，继续轮询。
+      const timer = window.setTimeout(poll, PENDING_POLL_INTERVAL_MS);
+      pendingPollingTimers.set(id, timer);
+    } catch (error) {
+      // 查询失败时停止轮询，避免无限重试。
+      pendingPollingTimers.delete(id);
+    }
+  };
+
+  const timer = window.setTimeout(poll, PENDING_POLL_INTERVAL_MS);
+  pendingPollingTimers.set(id, timer);
+}
+
+function stopPendingPolling(id: string) {
+  const timer = pendingPollingTimers.get(id);
+  if (timer) {
+    window.clearTimeout(timer);
+    pendingPollingTimers.delete(id);
+  }
+}
+
+function checkAndStartPendingPolling() {
+  // 为当前页所有 PENDING 记录启动轮询。
+  for (const item of generations.value) {
+    if (item.status === 'PENDING') {
+      startPendingPolling(item.id);
+    }
+  }
+}
 </script>
 
 <style scoped lang="scss">

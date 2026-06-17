@@ -1,7 +1,5 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
-import ElementPlus from 'element-plus';
-import 'element-plus/dist/index.css';
 import './styles/main.scss';
 import App from './App.vue';
 import { router } from './router';
@@ -13,6 +11,5 @@ const app = createApp(App);
 app.use(createPinia());
 // 路由必须早于挂载注册，确保首屏能先经过登录态守卫。
 app.use(router);
-// Element Plus 提供全局组件和服务，避免各页面重复注册基础组件。
-app.use(ElementPlus);
+// Element Plus 组件通过 unplugin-vue-components 自动按需导入
 app.mount('#app');

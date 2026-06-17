@@ -18,3 +18,6 @@ export const MAX_REFERENCE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 
 // 只允许常见网页图片格式，便于上游 API 和前端预览稳定处理。
 export const ALLOWED_IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
+
+// 生成任务队列最大长度，防止高频提交堆积过多内存任务。
+export const GENERATION_QUEUE_MAX_LENGTH = 50;

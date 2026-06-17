@@ -1,27 +1,31 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
-import MainLayout from '../layouts/MainLayout.vue';
-import LoginView from '../views/LoginView.vue';
-import GenerateView from '../views/GenerateView.vue';
-import GalleryView from '../views/GalleryView.vue';
-import ConfigView from '../views/ConfigView.vue';
-import AdminUsersView from '../views/AdminUsersView.vue';
 
-// 路由表按“登录页 + 受保护主布局”组织，主布局下的页面默认要求登录。
+// 路由表按"登录页 + 受保护主布局"组织，主布局下的页面默认要求登录。
+// 使用动态 import() 实现路由懒加载，减少初始包体积
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/login', name: 'login', component: LoginView },
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('../views/LoginView.vue'),
+    },
     {
       path: '/',
-      component: MainLayout,
+      component: () => import('../layouts/MainLayout.vue'),
       meta: { requiresAuth: true },
       children: [
         { path: '', redirect: '/generate' },
-        { path: 'generate', name: 'generate', component: GenerateView },
-        { path: 'gallery', name: 'gallery', component: GalleryView },
-        { path: 'configs', name: 'configs', component: ConfigView },
-        { path: 'admin/users', name: 'admin-users', component: AdminUsersView, meta: { requiresAdmin: true } },
+        { path: 'generate', name: 'generate', component: () => import('../views/GenerateView.vue') },
+        { path: 'gallery', name: 'gallery', component: () => import('../views/GalleryView.vue') },
+        { path: 'configs', name: 'configs', component: () => import('../views/ConfigView.vue') },
+        {
+          path: 'admin/users',
+          name: 'admin-users',
+          component: () => import('../views/AdminUsersView.vue'),
+          meta: { requiresAdmin: true },
+        },
       ],
     },
   ],

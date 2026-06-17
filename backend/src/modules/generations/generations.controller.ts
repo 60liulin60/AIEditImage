@@ -72,7 +72,9 @@ export class GenerationsController {
   async file(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Res() response: Response) {
     const image = await this.generationsService.getImageStream(user, id);
     image.stream.on('error', () => this.handleImageStreamError(response));
+    // 生成图片内容固定，允许浏览器缓存 1 天，减少重复下载流量。
     response.setHeader('Content-Type', image.mimeType);
+    response.setHeader('Cache-Control', 'public, max-age=86400');
     image.stream.pipe(response);
   }
 

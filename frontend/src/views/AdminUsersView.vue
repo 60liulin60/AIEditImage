@@ -56,7 +56,6 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
-import { ElMessage } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import { createUser, fetchUsers, updateUser } from '../api/admin';
 import { getErrorMessage } from '../api/http';
