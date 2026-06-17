@@ -11,5 +11,6 @@ backend/mysql/*
 !backend/mysql/.gitkeep
 frontend/dist/
 *.log
-.claude
-.codegraph
+.claude/
+.codegraph/
+.reasonix/
