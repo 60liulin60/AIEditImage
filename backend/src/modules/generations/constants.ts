@@ -4,6 +4,9 @@ export const GPT_MAX_REFERENCE_IMAGES = 16;
 // Nano Banana 首版限制为 3 张参考图，降低上游失败率并保持表单清晰。
 export const NANO_BANANA_MAX_REFERENCE_IMAGES = 3;
 
+// Grok 图生图最多 5 张参考图，兼顾 xAI 多图编辑与表单清晰度。
+export const GROK_MAX_REFERENCE_IMAGES = 5;
+
 // 进程内同时执行的后台生成任务数，避免并发请求同时打满外部 Provider。
 export const GENERATION_MAX_CONCURRENCY = 2;
 
@@ -21,3 +24,4 @@ export const ALLOWED_IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'
 
 // 生成任务队列最大长度，防止高频提交堆积过多内存任务。
 export const GENERATION_QUEUE_MAX_LENGTH = 50;
+

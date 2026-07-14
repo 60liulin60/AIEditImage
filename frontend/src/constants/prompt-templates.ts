@@ -46,4 +46,16 @@ export const promptTemplates: PromptTemplate[] = [
     category: 'GPT',
     prompt: '生成一张写实产品摄影图，主体清晰，背景干净，适合官网首屏展示，保留自然阴影。',
   },
+  {
+    title: 'Grok 概念场景',
+    provider: 'GROK',
+    category: 'Grok',
+    prompt: '生成一张电影感概念场景，主体清晰，光影戏剧化，细节丰富，适合作为插画封面。',
+  },
+  {
+    title: 'Grok 图生图风格迁移',
+    provider: 'GROK',
+    category: 'Grok',
+    prompt: '基于参考图保持主体结构，转换为高质量插画风格，色彩鲜明，边缘干净。',
+  },
 ];

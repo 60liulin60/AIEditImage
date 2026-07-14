@@ -1,19 +1,31 @@
 <template>
-  <section class="space-y-5">
-    <div>
-      <h1 class="text-2xl font-semibold">API 配置</h1>
-      <p class="muted-text mt-1">请求地址、模型和 Key 保存在当前浏览器，Key 会先加密再写入 IndexedDB；本地加密不能抵御浏览器 XSS。</p>
+  <section class="config-page space-y-6 fade-in">
+    <div class="page-header">
+      <h1 class="text-2xl font-semibold section-title">API 配置</h1>
+      <p class="muted-text mt-2">请求地址、模型和 Key 保存在当前浏览器，Key 会先加密再写入 IndexedDB；本地加密不能抵御浏览器 XSS。</p>
     </div>
 
-    <div class="content-panel p-5">
-      <el-form :model="form" label-position="top" class="grid gap-4 md:grid-cols-2">
+    <!-- 新增/编辑配置弹窗 -->
+    <el-dialog
+      v-model="dialogVisible"
+      :title="editingConfigId ? '编辑配置' : '新增配置'"
+      width="600px"
+      destroy-on-close
+      append-to-body
+      lock-scroll
+      class="config-form-dialog app-dialog"
+      modal-class="config-dialog-overlay app-dialog-overlay"
+      @closed="resetForm"
+    >
+      <el-form :model="form" label-position="top">
         <el-form-item label="配置名称" :error="formErrors.name">
           <el-input v-model="form.name" placeholder="OpenAI 主账号" @input="clearFormError('name')" />
         </el-form-item>
         <el-form-item label="类型">
-          <el-select v-model="form.provider" class="w-full" :disabled="loading" @change="applyProviderDefaults">
+          <el-select v-model="form.provider" style="width: 100%" popper-class="dialog-select-dropdown" :disabled="loading" @change="applyProviderDefaults">
             <el-option label="GPT" value="GPT" />
             <el-option label="Nano Banana" value="NANO_BANANA" />
+            <el-option label="Grok" value="GROK" />
           </el-select>
         </el-form-item>
         <el-form-item label="请求地址" :error="formErrors.baseUrl">
@@ -22,30 +34,52 @@
         <el-form-item label="模型" :error="formErrors.model">
           <el-input v-model="form.model" @input="clearFormError('model')" />
         </el-form-item>
-        <el-form-item label="API Key" :error="formErrors.apiKey" class="md:col-span-2">
-          <el-input v-model="form.apiKey" type="password" show-password :placeholder="apiKeyPlaceholder" @input="clearFormError('apiKey')" />
+        <el-form-item label="API Key" :error="formErrors.apiKey">
+          <div class="api-key-field">
+            <el-input v-model="form.apiKey" type="password" show-password :placeholder="apiKeyPlaceholder" @input="clearFormError('apiKey')" />
+            <span class="api-key-hint">
+              <el-icon><Lock /></el-icon>
+              本地加密存储
+            </span>
+          </div>
         </el-form-item>
       </el-form>
-      <div class="flex justify-end gap-2">
-        <el-button v-if="editingConfigId" :disabled="loading" @click="cancelEdit">取消编辑</el-button>
-        <el-button type="primary" :icon="editingConfigId ? Edit : Plus" :loading="loading" :disabled="loading" @click="handleSave">
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="loading" :disabled="loading" @click="handleSave">
           {{ editingConfigId ? '保存修改' : '保存配置' }}
         </el-button>
-      </div>
-    </div>
+      </template>
+    </el-dialog>
 
-    <div class="content-panel p-5">
-      <el-table :data="configs" empty-text="暂无配置">
+    <div class="content-panel table-section p-6">
+      <div class="section-head">
+        <h2 class="section-head-title">
+          <el-icon class="section-head-icon"><Setting /></el-icon>
+          已保存配置
+        </h2>
+        <el-button type="primary" :icon="Plus" @click="openAddDialog">新增配置</el-button>
+      </div>
+      <el-table :data="configs" empty-text="暂无配置" class="styled-table">
         <el-table-column prop="name" label="名称" min-width="160" />
         <el-table-column label="类型" width="140">
-          <template #default="{ row }">{{ formatProvider(row.provider) }}</template>
+          <template #default="{ row }">
+            <span class="provider-chip">{{ formatProvider(row.provider) }}</span>
+          </template>
         </el-table-column>
         <el-table-column prop="model" label="模型" min-width="180" />
         <el-table-column prop="baseUrl" label="请求地址" min-width="260" />
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link :disabled="loading || deletingConfigId === row.id" @click="startEdit(row)">编辑</el-button>
-            <el-button type="danger" link :loading="deletingConfigId === row.id" :disabled="loading || deletingConfigId === row.id" @click="handleDelete(row.id)">删除</el-button>
+            <div class="row-actions">
+              <el-button type="primary" link :disabled="loading || deletingConfigId === row.id" @click="startEdit(row)">
+                <el-icon><Edit /></el-icon>
+                编辑
+              </el-button>
+              <el-button type="danger" link :loading="deletingConfigId === row.id" :disabled="loading || deletingConfigId === row.id" @click="handleDelete(row.id)">
+                删除
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -55,7 +89,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
-import { Edit, Plus } from '@element-plus/icons-vue';
+import { Edit, Lock, Plus, Setting } from '@element-plus/icons-vue';
 import { deleteApiConfig, listApiConfigs, saveApiConfig } from '../utils/api-config-store';
 import { getErrorMessage } from '../api/http';
 import type { ApiConfig, Provider } from '../types';
@@ -65,6 +99,7 @@ const configs = ref<ApiConfig[]>([]);
 const editingConfigId = ref('');
 const loading = ref(false);
 const deletingConfigId = ref('');
+const dialogVisible = ref(false);
 const formErrors = reactive({
   name: '',
   baseUrl: '',
@@ -81,6 +116,8 @@ const providerDefaults: Record<Provider, { baseUrl: string; model: string }> = {
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     model: 'gemini-2.5-flash-image-preview',
   },
+  // 官方 xAI Images API；用户可改中转地址与模型名。
+  GROK: { baseUrl: 'https://api.x.ai/v1', model: 'grok-imagine-image' },
 };
 
 // 配置表单只保存页面输入，保存时再加密 API Key 写入 IndexedDB。
@@ -100,7 +137,9 @@ const apiKeyPlaceholder = computed(() =>
 );
 
 function formatProvider(provider: Provider) {
-  return provider === 'GPT' ? 'GPT' : 'Nano Banana';
+  if (provider === 'GPT') return 'GPT';
+  if (provider === 'GROK') return 'Grok';
+  return 'Nano Banana';
 }
 
 function applyProviderDefaults() {
@@ -182,11 +221,12 @@ function startEdit(config: ApiConfig) {
   form.baseUrl = config.baseUrl;
   form.model = config.model;
   form.apiKey = '';
+  dialogVisible.value = true;
 }
 
-function cancelEdit() {
-  // 取消编辑不触碰 IndexedDB，只恢复页面输入状态。
+function openAddDialog() {
   resetForm();
+  dialogVisible.value = true;
 }
 
 async function handleSave() {
@@ -202,7 +242,8 @@ async function handleSave() {
   try {
     await saveApiConfig({ ...form, id: editingConfigId.value || undefined });
     ElMessage.success(editingConfigId.value ? '配置已更新' : '配置已保存');
-    resetForm();
+    // 关闭弹窗后由 @closed=resetForm 统一重置表单，避免重复重置。
+    dialogVisible.value = false;
     await loadConfigs();
   } catch (error) {
     ElMessage.error(getErrorMessage(error, editingConfigId.value ? '配置更新失败' : '配置保存失败'));
@@ -234,3 +275,303 @@ async function handleDelete(id: string) {
 
 onMounted(loadConfigs);
 </script>
+
+<style scoped lang="scss">
+.config-page {
+  animation: fadeIn 0.5s ease-out both;
+}
+
+.page-header {
+  animation: fadeIn 0.5s ease-out both;
+}
+
+/* 分区标题：图标 + 渐变装饰线 */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.section-head-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-family: 'Outfit', sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: #1e293b;
+  position: relative;
+  padding-left: 14px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 2px;
+    bottom: 2px;
+    width: 4px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, #f59e0b, #fbbf24);
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+  }
+}
+
+.section-head-icon {
+  color: #f59e0b;
+}
+
+.table-section {
+  animation: fadeIn 0.5s ease-out 0.2s both;
+}
+
+/* 弹窗表单样式 */
+.dialog-form {
+  :deep(.el-form-item) {
+    margin-bottom: 20px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+}
+
+/* API Key 安全提示 */
+.api-key-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.api-key-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(52, 211, 153, 0.08));
+  color: #059669;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+
+  .el-icon {
+    font-size: 13px;
+  }
+}
+
+/* 表格内 provider 徽章 */
+.provider-chip {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
+  color: #3b82f6;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+
+  :deep(.el-button) {
+    font-weight: 500;
+    transition: all 0.25s ease;
+
+    &:hover:not(:disabled) {
+      transform: translateX(2px);
+    }
+  }
+}
+
+/* 表格样式统一升级 */
+.styled-table {
+  :deep(.el-table__header) th.el-table__cell {
+    background: linear-gradient(180deg, #f8fafc, #f1f5f9);
+    color: #475569;
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  :deep(.el-table__body) tr {
+    transition: background 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+    &:hover {
+      background: linear-gradient(90deg, rgba(245, 158, 11, 0.04), transparent);
+    }
+  }
+
+  :deep(.el-table__body) td.el-table__cell {
+    color: #334155;
+    transition: color 0.25s ease;
+
+    tr:hover & {
+      color: #0f172a;
+    }
+  }
+}
+
+/* 表单聚焦态统一暖色描边 */
+:deep(.el-input__wrapper) {
+  border-radius: 10px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &:hover {
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3) !important;
+  }
+
+  &.is-focus {
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.4) !important;
+  }
+}
+
+:deep(.el-form-item__label) {
+  font-weight: 500;
+  color: #475569;
+  font-size: 14px;
+}
+
+/* 主按钮渐变 */
+:deep(.el-button--primary) {
+  border-radius: 10px;
+  background: linear-gradient(135deg, #f59e0b, #fbbf24) !important;
+  border: none !important;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(245, 158, 11, 0.3) !important;
+    filter: brightness(1.05);
+  }
+}
+
+:deep(.el-button:not(.el-button--primary):not(.el-button--danger)) {
+  border-radius: 10px;
+  transition: all 0.25s ease;
+
+  &:hover:not(:disabled) {
+    background: #fef3c7;
+    border-color: #f59e0b;
+    color: #d97706;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>
+
+<style lang="scss">
+/* 滚动/层级由全局 .app-dialog / .app-dialog-overlay 负责；此处只保留配置弹窗视觉。 */
+.config-form-dialog {
+  border-radius: 12px;
+
+  .el-dialog__header {
+    border-bottom: 1px solid #e5e7eb;
+    padding: 16px 20px;
+    margin-right: 0;
+  }
+
+  .el-dialog__body {
+    padding: 20px;
+  }
+
+  .el-dialog__footer {
+    border-top: 1px solid #e5e7eb;
+    padding: 12px 20px;
+  }
+
+  /* 表单样式 */
+  .el-form-item {
+    margin-bottom: 18px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    .el-form-item__label {
+      font-weight: 500;
+      color: #475569;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .el-input__wrapper,
+    .el-select__wrapper {
+      border-radius: 8px !important;
+      transition: all 0.2s ease;
+
+      &:hover {
+        box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.4) !important;
+      }
+
+      &.is-focus {
+        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.5) !important;
+      }
+    }
+  }
+
+  /* API Key 字段 */
+  .api-key-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .api-key-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(16, 185, 129, 0.08);
+    color: #059669;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+  }
+
+  /* 按钮样式 */
+  .el-button {
+    border-radius: 8px;
+    font-weight: 500;
+  }
+
+  .el-button--primary {
+    background: linear-gradient(135deg, #f59e0b, #fbbf24) !important;
+    border: none !important;
+
+    &:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3) !important;
+    }
+  }
+
+  .el-button--default {
+    &:hover:not(:disabled) {
+      background: #fef3c7;
+      border-color: #f59e0b;
+      color: #d97706;
+    }
+  }
+}
+</style>

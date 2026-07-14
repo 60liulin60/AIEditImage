@@ -11,14 +11,6 @@
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
-    "mysql": "node backend/scripts/mysql-dev.mjs start",
-    "mysql:init": "node backend/scripts/mysql-dev.mjs prepare",
-    "mysql:sql": "node backend/scripts/mysql-dev.mjs sql",
-    "mysql:help": "node backend/scripts/mysql-dev.mjs help",
     "seed:admin": "pnpm --filter @aieditimage/backend seed:admin"
-  },
-  "devDependencies": {
-    "mysql-memory-server": "^1.14.1",
-    "mysql2": "^3.22.3"
   }
 }

@@ -1,9 +1,13 @@
 import { spawn } from 'node:child_process';
-import net from 'node:net';
+import { mkdir } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const mysqlPort = Number(process.env.AIEDITIMAGE_MYSQL_PORT ?? 3307);
 const backendOnly = process.argv.includes('--backend-only');
 const children = [];
+const backendDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'backend');
+// SQLite 数据文件目录，确保 prisma db push 前父目录已存在。
+const sqliteDataDir = resolve(backendDir, 'data');
 
 function createEnv() {
   // 统一把临时目录放到仓库内，规避 Windows 用户目录权限问题。
@@ -12,20 +16,6 @@ function createEnv() {
     TEMP: process.env.TEMP || 'E:\\otherObeject\\AIEditImage\\.tmp',
     TMP: process.env.TMP || 'E:\\otherObeject\\AIEditImage\\.tmp',
   };
-}
-
-function isPortOpen(port) {
-  return new Promise((resolve) => {
-    const socket = net.createConnection({ host: '127.0.0.1', port });
-    socket.once('connect', () => {
-      socket.end();
-      resolve(true);
-    });
-    socket.once('error', () => {
-      socket.destroy();
-      resolve(false);
-    });
-  });
 }
 
 function spawnProcess(name, command, args) {
@@ -48,7 +38,7 @@ function spawnProcess(name, command, args) {
 }
 
 function runCommand(name, command, args) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolvePromise, reject) => {
     const child = spawn(command, args, {
       stdio: 'inherit',
       shell: process.platform === 'win32',
@@ -57,7 +47,7 @@ function runCommand(name, command, args) {
 
     child.on('exit', (code) => {
       if (code === 0) {
-        resolve();
+        resolvePromise();
         return;
       }
       reject(new Error(`${name} 执行失败，退出码：${code}`));
@@ -65,39 +55,19 @@ function runCommand(name, command, args) {
   });
 }
 
-function waitForPort(port, timeoutMs = 240_000) {
-  const startedAt = Date.now();
-
-  return new Promise((resolve, reject) => {
-    const tryConnect = () => {
-      const socket = net.createConnection({ host: '127.0.0.1', port });
-      socket.once('connect', () => {
-        socket.end();
-        resolve();
-      });
-      socket.once('error', () => {
-        socket.destroy();
-        if (Date.now() - startedAt > timeoutMs) {
-          reject(new Error(`等待 MySQL 端口 ${port} 超时，请查看上方 MySQL 日志。`));
-          return;
-        }
-        setTimeout(tryConnect, 1000);
-      });
-    };
-
-    tryConnect();
-  });
-}
-
 async function prepareBackendDatabase() {
-  console.log('同步 Prisma 表结构...');
-  await runCommand('Prisma db push', 'pnpm', ['--filter', '@aieditimage/backend', 'db:sync']);
+  await mkdir(sqliteDataDir, { recursive: true });
+  // 先 generate 再 db push：schema 变更后必须重建 Client，否则 seed/ts-node 会报 PrismaClient 导出不存在。
+  console.log('生成 Prisma Client...');
+  await runCommand('Prisma generate', 'pnpm', ['--filter', '@aieditimage/backend', 'prisma:generate']);
+  console.log('同步 Prisma 表结构（SQLite）...');
+  await runCommand('Prisma db push', 'pnpm', ['--filter', '@aieditimage/backend', 'exec', 'prisma', 'db', 'push']);
   console.log('初始化管理员账号...');
   await runCommand('seed admin', 'pnpm', ['seed:admin']);
 }
 
 function shutdown(code = 0) {
-  // 开发命令退出时同步停止 MySQL、后端和前端子进程。
+  // 开发命令退出时同步停止后端和前端子进程。
   for (const child of children) {
     if (!child.killed) {
       child.kill('SIGINT');
@@ -109,16 +79,7 @@ function shutdown(code = 0) {
 process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 
-if (await isPortOpen(mysqlPort)) {
-  console.log(`检测到 MySQL 已在 localhost:${mysqlPort} 运行，直接复用。`);
-} else {
-  console.log('启动 pnpm 管理的本地 MySQL，首次运行可能需要下载 MySQL 二进制...');
-  spawnProcess('mysql', 'pnpm', ['mysql']);
-}
-
 try {
-  await waitForPort(mysqlPort);
-  console.log(`MySQL 已就绪：localhost:${mysqlPort}`);
   await prepareBackendDatabase();
   spawnProcess('backend', 'pnpm', ['dev:backend:nest']);
   if (!backendOnly) {

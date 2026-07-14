@@ -2,46 +2,270 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 全局根样式定义中文优先字体和默认页面底色。 */
+/* 全局根变量和字体栈：Outfit 用于标题，Noto Sans SC 用于中文正文。 */
 :root {
-  color: #1f2937;
-  background: #f6f7fb;
-  font-family:
-    Inter,
-    "PingFang SC",
-    "Microsoft YaHei",
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
+  --color-sidebar: #0f172a;
+  --color-sidebar-light: #1e293b;
+  --color-warm: #f59e0b;
+  --color-warm-light: #fbbf24;
+  --color-ink: #1f2937;
+  --color-muted: #6b7280;
+  --color-border: #e2e8f0;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f8fafc;
+  --color-bg: #f1f5f9;
+  --font-display: 'Outfit', 'Noto Sans SC', system-ui, sans-serif;
+  --font-body: 'Noto Sans SC', 'Outfit', system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.04), 0 6px 24px rgba(15, 23, 42, 0.06);
+  --shadow-card-hover: 0 4px 12px rgba(15, 23, 42, 0.08), 0 12px 32px rgba(15, 23, 42, 0.10);
+  
+  /* z-index 层级体系
+   * 弹窗由 ConfigProvider 从 2000 起递增；下拉/消息/预览必须明显高于常见堆叠上限。 */
+  --z-fixed: 100;
+  --z-dialog: 2000;
+  --z-dialog-dropdown: 5200;
+  --z-message: 6000;
+  --z-image-viewer: 7000;
+
+  color: var(--color-ink);
+  background: var(--color-bg);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+html,
 body {
   min-width: 320px;
   margin: 0;
-  background: #f6f7fb;
+  background: var(--color-bg);
+  /* 由布局内部主内容区滚动，避免弹窗打开时 body 与内容双重滚动。 */
+  height: 100%;
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
 }
 
 /* 表单控件继承页面字体，避免 Element Plus 与原生输入出现字体跳变。 */
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
+/* 页面外壳承载侧边栏 + 内容区布局，背景使用微妙噪点纹理增加质感。 */
 .page-shell {
-  min-height: 100vh;
-  background: #f6f7fb;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(245, 158, 11, 0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(37, 99, 235, 0.03) 0%, transparent 50%),
+    var(--color-bg);
 }
 
-/* 通用内容面板仅承载具体表单、表格或卡片，不承载页面布局语义。 */
+/* 通用内容面板：白色卡片 + 精细阴影 + 微妙边框，承载表单、表格或卡片。 */
 .content-panel {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 12px 28px rgb(15 23 42 / 6%);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.3s var(--ease-smooth), transform 0.3s var(--ease-smooth);
 }
 
 .muted-text {
-  color: #6b7280;
+  color: var(--color-muted);
+}
+
+/* 标题装饰线：用于页面标题区域左侧的品牌色竖线。 */
+.section-title {
+  position: relative;
+  padding-left: 16px;
+}
+
+.section-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 4px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--color-warm), var(--color-warm-light));
+}
+
+/* ── 工具类 ── */
+
+/* 悬浮微抬效果：卡片、按钮等元素 hover 时轻微上浮并加深阴影。 */
+.hover-lift {
+  transition: transform 0.3s var(--ease-smooth), box-shadow 0.3s var(--ease-smooth);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* 淡入动画：用于页面元素依次出现。 */
+.fade-in {
+  animation: fadeIn 0.5s ease-out both;
+}
+
+.fade-in-delay-1 { animation-delay: 0.1s; }
+.fade-in-delay-2 { animation-delay: 0.2s; }
+.fade-in-delay-3 { animation-delay: 0.3s; }
+.fade-in-delay-4 { animation-delay: 0.4s; }
+
+@keyframes fadeIn {
+  0% { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* 滑入动画：从左侧滑入。 */
+.slide-in-left {
+  animation: slideInLeft 0.4s ease-out both;
+}
+
+@keyframes slideInLeft {
+  0% { opacity: 0; transform: translateX(-16px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+/* 品牌渐变按钮样式覆盖。 */
+.btn-gradient {
+  background: linear-gradient(135deg, var(--color-warm), var(--color-warm-light)) !important;
+  border: none !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  transition: transform 0.25s var(--ease-smooth), box-shadow 0.25s var(--ease-smooth), filter 0.25s ease !important;
+}
+
+.btn-gradient:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.35);
+  filter: brightness(1.05);
+}
+
+.btn-gradient:active {
+  transform: translateY(0);
+}
+
+/* Element Plus 全局聚焦态统一为暖色描边。 */
+.el-input__wrapper:focus-within,
+.el-textarea__inner:focus,
+.el-select .el-input.is-focus .el-input__wrapper {
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3) !important;
+  border-color: var(--color-warm) !important;
+}
+
+/* ── 全局 z-index 与弹窗滚动体系 ── */
+/* Layer 0: 页面内容
+ * Layer 1: 固定侧栏/顶栏 (100)
+ * Layer 2: 弹窗遮罩/本体 (ConfigProvider 从 2000 递增)
+ * Layer 3: 弹窗内下拉 (5200，高于常见堆叠)
+ * Layer 4: 全局消息 (6000)
+ * Layer 5: 图片预览 (7000) */
+
+/* 弹窗打开时 Element Plus 会给 body 加 el-popup-parent--hidden，这里兜底锁住外部滚动。 */
+html.el-popup-parent--hidden,
+body.el-popup-parent--hidden {
+  overflow: hidden !important;
+  height: 100% !important;
+}
+
+/* 消息、通知始终高于普通弹窗堆叠。 */
+.el-message,
+.el-notification {
+  z-index: var(--z-message) !important;
+}
+
+/* EP2 MessageBox 使用 .el-overlay.is-message-box，不再使用旧的 __wrapper。
+ * 用 flex 居中兜底，避免宽度塌成左侧竖条、按钮错位。 */
+.el-overlay.is-message-box {
+  z-index: var(--z-message) !important;
+}
+
+.el-overlay.is-message-box .el-overlay-message-box {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/* flex 居中后不再依赖 ::after 撑高度，避免伪元素干扰。 */
+.el-overlay.is-message-box .el-overlay-message-box::after {
+  display: none !important;
+  content: none !important;
+}
+
+.el-overlay.is-message-box .el-message-box {
+  width: min(420px, calc(100vw - 32px));
+  max-width: var(--el-messagebox-width, 420px);
+  margin: 0 !important;
+  vertical-align: initial;
+  flex-shrink: 0;
+}
+
+/* 图片预览查看器始终在最上层。 */
+.el-image-viewer__wrapper {
+  z-index: var(--z-image-viewer) !important;
+}
+
+/* 弹窗内 Select 下拉 teleport 到 body，需固定高 z-index。 */
+.dialog-select-dropdown {
+  z-index: var(--z-dialog-dropdown) !important;
+}
+
+/* 弹窗遮罩：保留 Element Plus 默认 fixed 定位，只补滚动隔离。
+ * 禁止改 el-overlay-dialog 的 position，否则会出现“只有遮罩、没有弹窗”。 */
+.app-dialog-overlay {
+  overscroll-behavior: contain;
+}
+
+.app-dialog-overlay .el-overlay-dialog {
+  /* 保持 EP 的 fixed + inset 布局，允许遮罩区域内滚动长弹窗。 */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 弹窗本体：限制高度，表单在 body 内滚动。
+ * 用 max-height 约束 body，避免 flex-basis:0% 把内容压没。 */
+.app-dialog.el-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh;
+  margin-top: 8vh !important;
+  margin-bottom: 8vh !important;
+  overflow: hidden;
+}
+
+.app-dialog.el-dialog .el-dialog__header,
+.app-dialog.el-dialog .el-dialog__footer {
+  flex: 0 0 auto;
+}
+
+.app-dialog.el-dialog .el-dialog__body {
+  flex: 0 1 auto;
+  max-height: calc(85vh - 140px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* 自定义滚动条：融入深色侧边栏和浅色内容区。 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
 }

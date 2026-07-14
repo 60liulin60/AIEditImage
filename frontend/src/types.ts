@@ -1,5 +1,5 @@
 // 前后端共享的图片服务类型，新增 provider 时需同步后端枚举。
-export type Provider = 'GPT' | 'NANO_BANANA';
+export type Provider = 'GPT' | 'NANO_BANANA' | 'GROK';
 // 权限角色与后端守卫保持一致，前端只用于展示和路由拦截。
 export type UserRole = 'ADMIN' | 'USER';
 // 生成状态覆盖异步任务的三个终态/中间态。

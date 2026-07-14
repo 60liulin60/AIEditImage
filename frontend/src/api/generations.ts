@@ -28,9 +28,8 @@ export async function createGeneration(payload: CreateGenerationPayload) {
     formData.append('referenceImages', file);
   }
 
-  const { data } = await http.post<ImageGeneration>('/generations', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
+  // 不要手动设置 multipart Content-Type，否则会缺少 boundary，后端 Multer 可能直接 500。
+  const { data } = await http.post<ImageGeneration>('/generations', formData);
   return data;
 }
 

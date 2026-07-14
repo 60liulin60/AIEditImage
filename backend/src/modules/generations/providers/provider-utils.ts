@@ -128,6 +128,33 @@ export function isPrivateProviderHost(hostname: string): boolean {
   return isPrivateIpv4Host(normalizedHostname);
 }
 
+// 本机回环地址：本地 API 中转（如 localhost:8317）可作 baseUrl，但仍禁止用作上游回传的图片下载地址。
+export function isLoopbackProviderHost(hostname: string): boolean {
+  const normalizedHostname = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (normalizedHostname === 'localhost' || normalizedHostname.endsWith('.localhost')) {
+    return true;
+  }
+  if (normalizedHostname === '::1') {
+    return true;
+  }
+
+  const ipv4MappedPrefix = '::ffff:';
+  if (normalizedHostname.startsWith(ipv4MappedPrefix)) {
+    return isLoopbackIpv4Host(normalizedHostname.slice(ipv4MappedPrefix.length));
+  }
+
+  return isLoopbackIpv4Host(normalizedHostname);
+}
+
+function isLoopbackIpv4Host(hostname: string): boolean {
+  const parts = hostname.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return false;
+  }
+  // 仅放行 127.0.0.0/8，避免把 10/172/192 等局域网或元数据网段当成本地网关。
+  return parts[0] === 127;
+}
+
 function isPrivateIpv4Host(hostname: string): boolean {
   const parts = hostname.split('.').map(Number);
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {

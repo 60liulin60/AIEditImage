@@ -3,6 +3,7 @@ import {
   assertPublicProviderUrl,
   detectImageBytes,
   extractProviderMessage,
+  isLoopbackProviderHost,
   isPrivateProviderHost,
   PRIVATE_PROVIDER_HOST_ERROR,
   UNSUPPORTED_PROVIDER_URL_PROTOCOL_ERROR,
@@ -32,6 +33,15 @@ describe('provider-utils', () => {
     expect(isPrivateProviderHost('fe90::1')).toBe(true);
     expect(isPrivateProviderHost('::ffff:127.0.0.1')).toBe(true);
     expect(isPrivateProviderHost('api.openai.com')).toBe(false);
+  });
+
+  
+  it('detects loopback provider hosts for local gateways', () => {
+    expect(isLoopbackProviderHost('localhost')).toBe(true);
+    expect(isLoopbackProviderHost('127.0.0.1')).toBe(true);
+    expect(isLoopbackProviderHost('::1')).toBe(true);
+    expect(isLoopbackProviderHost('192.168.1.1')).toBe(false);
+    expect(isLoopbackProviderHost('169.254.169.254')).toBe(false);
   });
 
   it('rejects malformed and private provider image URLs', () => {

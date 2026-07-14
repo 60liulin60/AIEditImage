@@ -14,7 +14,7 @@ export async function createUser(payload: { email: string; password: string; rol
 }
 
 // 用户更新接口保持局部更新语义，只发送被修改的字段。
-export async function updateUser(id: string, payload: { isActive?: boolean; role?: UserRole }) {
+export async function updateUser(id: string, payload: { email?: string; password?: string; isActive?: boolean; role?: UserRole }) {
   const { data } = await http.patch<User>(`/admin/users/${id}`, payload);
   return data;
 }

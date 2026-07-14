@@ -119,7 +119,7 @@ export async function saveApiConfig(draft: ApiConfigDraft) {
   // 只有用户输入新 Key 时才重新加密，降低误操作覆盖原 Key 的风险。
   const encrypted = draft.apiKey
     ? await encryptApiKey(draft.apiKey)
-    : { encryptedKey: existingConfig.encryptedKey, iv: existingConfig.iv };
+    : { encryptedKey: existingConfig!.encryptedKey, iv: existingConfig!.iv };
   const config: ApiConfig = {
     id: draft.id ?? crypto.randomUUID(),
     name: draft.name,

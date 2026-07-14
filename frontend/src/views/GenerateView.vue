@@ -1,12 +1,12 @@
 <template>
-  <section class="generate-grid">
+  <section class="generate-grid fade-in">
     <div class="space-y-5">
-      <div>
-        <h1 class="text-2xl font-semibold">图片生成</h1>
-        <p class="muted-text mt-1">选择 GPT 或 Nano Banana 配置，输入提示词即可生成；参考图可选。</p>
+      <div class="page-header">
+        <h1 class="text-2xl font-semibold section-title">图片生成</h1>
+        <p class="muted-text mt-2">选择 GPT、Nano Banana 或 Grok 配置，输入提示词即可生成；参考图可选。</p>
       </div>
 
-      <div class="content-panel p-5">
+      <div class="content-panel form-panel p-6">
         <el-form :model="form" label-position="top" class="space-y-2">
           <el-form-item label="API 配置">
             <el-select v-model="form.configId" class="w-full" placeholder="请选择配置" :disabled="submitting || configsLoading" @change="handleConfigChange">
@@ -49,25 +49,26 @@
               </template>
             </el-upload>
           </el-form-item>
-          <el-button type="primary" class="w-full" :loading="submitting" :disabled="submitting" :icon="MagicStick" @click="handleGenerate">
-            {{ submitting ? '生成中' : '生成图片' }}
+          <el-button type="primary" class="generate-btn w-full" :loading="submitting" :disabled="submitting" @click="handleGenerate">
+            <el-icon class="generate-btn-icon" :class="{ 'is-spinning': submitting }"><MagicStick /></el-icon>
+            <span class="ml-2">{{ submitting ? '生成中' : '生成图片' }}</span>
           </el-button>
         </el-form>
       </div>
     </div>
 
     <aside class="space-y-5">
-      <div class="content-panel p-5">
-        <h2 class="mb-4 text-lg font-semibold">提示词模板</h2>
+      <div class="content-panel template-panel p-6">
+        <h2 class="template-title mb-4">提示词模板</h2>
         <div class="template-list">
           <button v-for="template in filteredTemplates" :key="template.title" class="template-item" @click="useTemplate(template.prompt)">
-            <span class="font-medium">{{ template.title }}</span>
-            <span class="muted-text text-sm">{{ template.category }}</span>
+            <span class="template-name">{{ template.title }}</span>
+            <span class="template-category">{{ template.category }}</span>
           </button>
         </div>
       </div>
-      <div v-if="latestImageUrl" class="content-panel p-5">
-        <h2 class="mb-4 text-lg font-semibold">最新结果</h2>
+      <div v-if="latestImageUrl" class="content-panel result-panel p-6">
+        <h2 class="result-title mb-4">最新结果</h2>
         <el-image :src="latestImageUrl" fit="cover" class="latest-image" :preview-src-list="[latestImageUrl]" />
       </div>
     </aside>
@@ -104,6 +105,7 @@ const generationPollIntervalMs = parsePollInterval(import.meta.env.VITE_GENERATI
 const providerOptions = [
   { label: 'GPT', value: 'GPT' },
   { label: 'Nano Banana', value: 'NANO_BANANA' },
+  { label: 'Grok', value: 'GROK' },
 ];
 
 // 生成表单的页面态，API Key 不进入表单，提交时再从加密配置解密。
@@ -116,8 +118,12 @@ const form = reactive({
 
 // 当前选中的配置作为生成请求的 provider/baseUrl/model 来源。
 const selectedConfig = computed(() => configs.value.find((config) => config.id === form.configId));
-// GPT 支持更多参考图，Nano Banana 按后端能力限制为 3 张。
-const referenceLimit = computed(() => (form.provider === 'GPT' ? 16 : 3));
+// 参考图上限与后端常量保持一致：GPT 16 / Nano Banana 3 / Grok 5。
+const referenceLimit = computed(() => {
+  if (form.provider === 'GPT') return 16;
+  if (form.provider === 'GROK') return 5;
+  return 3;
+});
 // 模板只展示当前 provider 可用的内容，避免误用不兼容提示词。
 const filteredTemplates = computed(() => promptTemplates.filter((template) => template.provider === form.provider));
 
@@ -130,6 +136,11 @@ function handleConfigChange() {
 }
 
 function handleProviderChange() {
+  // 切换类型时优先选中同类型配置，减少“页面显示 Grok、实际提交 GPT”的错位。
+  const matchedConfig = configs.value.find((config) => config.provider === form.provider);
+  if (matchedConfig) {
+    form.configId = matchedConfig.id;
+  }
   trimReferenceFilesIfNeeded();
 }
 
@@ -215,6 +226,11 @@ async function handleGenerate() {
     ElMessage.warning('请先选择 API 配置');
     return;
   }
+  if (selectedConfig.value.provider !== form.provider) {
+    // 类型分段与配置可能不一致，提交始终以配置的 provider 为准，避免误以为在用 Grok。
+    ElMessage.warning(`当前配置类型为 ${formatProvider(selectedConfig.value.provider)}，已按配置提交`);
+    form.provider = selectedConfig.value.provider;
+  }
   if (!form.prompt.trim()) {
     ElMessage.warning('请输入提示词');
     return;
@@ -272,36 +288,367 @@ onBeforeUnmount(clearPollingTimer);
 <style scoped lang="scss">
 .generate-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 28px;
+  transition: grid-template-columns 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.page-header {
+  animation: fadeIn 0.5s ease-out both;
+}
+
+/* 表单面板：顶部渐变装饰条 + 微妙阴影层次 */
+.form-panel {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), #ffffff);
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b);
+    border-radius: 12px 12px 0 0;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: linear-gradient(180deg, rgba(245, 158, 11, 0.03), transparent);
+    pointer-events: none;
+  }
+}
+
+/* 生成按钮：渐变色 + 图标旋转 + 悬浮微抬 */
+.generate-btn {
+  position: relative;
+  height: 52px;
+  font-size: 16px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #f59e0b, #fbbf24) !important;
+  border: none !important;
+  border-radius: 12px !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.6s;
+  }
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(245, 158, 11, 0.4) !important;
+    filter: brightness(1.08);
+
+    &::before {
+      transform: translateX(100%);
+    }
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+}
+
+.generate-btn-icon {
+  font-size: 20px;
+  transition: transform 0.3s ease;
+
+  &.is-spinning {
+    animation: spin 1s linear infinite;
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 提示词模板面板 */
+.template-panel {
+  animation: fadeIn 0.5s ease-out 0.1s both;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), #ffffff);
+}
+
+.template-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1e293b;
+  position: relative;
+  padding-left: 14px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 3px;
+    bottom: 3px;
+    width: 4px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, #3b82f6, #8b5cf6);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  }
 }
 
 .template-list {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 4px;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: rgba(241, 245, 249, 0.5);
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #cbd5e1, #94a3b8);
+    border-radius: 3px;
+
+    &:hover {
+      background: linear-gradient(180deg, #94a3b8, #64748b);
+    }
+  }
 }
 
 .template-item {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   width: 100%;
-  padding: 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  padding: 16px 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
   background: #ffffff;
   text-align: left;
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    background: linear-gradient(180deg, #f59e0b, #fbbf24);
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 12px 0 0 12px;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    border-top: 2px solid #cbd5e1;
+    border-right: 2px solid #cbd5e1;
+    transform: translateY(-50%) rotate(45deg);
+    transition: all 0.3s ease;
+  }
+
+  &:hover {
+    border-color: #f59e0b;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+
+    &::before {
+      width: 5px;
+    }
+
+    &::after {
+      right: 12px;
+      border-color: #f59e0b;
+    }
+
+    .template-name {
+      color: #d97706;
+    }
+
+    .template-category {
+      color: #64748b;
+    }
+  }
 }
 
-.template-item:hover {
-  border-color: #2563eb;
+.template-name {
+  font-weight: 500;
+  color: #1e293b;
+  font-size: 14px;
+  transition: color 0.3s ease;
+}
+
+.template-category {
+  color: #94a3b8;
+  font-size: 12px;
+  transition: color 0.3s ease;
+}
+
+/* 最新结果面板：成功态微光动画边框 */
+.result-panel {
+  animation: fadeIn 0.5s ease-out 0.2s both;
+  position: relative;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), #ffffff);
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 14px;
+    padding: 2px;
+    background: linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b, #fbbf24);
+    background-size: 200% 100%;
+    animation: shimmer 3s linear infinite;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+}
+
+.result-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1e293b;
+  position: relative;
+  padding-left: 14px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 3px;
+    bottom: 3px;
+    width: 4px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, #f59e0b, #fbbf24);
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+  }
 }
 
 .latest-image {
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+
+  &:hover {
+    transform: scale(1.03);
+    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.15);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* 表单聚焦态统一暖色描边 */
+:deep(.el-input__wrapper) {
+  border-radius: 10px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &:hover {
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3) !important;
+  }
+
+  &.is-focus {
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.4) !important;
+  }
+}
+
+:deep(.el-textarea__inner) {
+  border-radius: 10px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &:hover {
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3);
+  }
+
+  &:focus {
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.4) !important;
+  }
+}
+
+:deep(.el-form-item__label) {
+  font-weight: 500;
+  color: #475569;
+  font-size: 14px;
+}
+
+/* 上传区域自定义样式 */
+:deep(.el-upload-dragger) {
+  border-radius: 12px;
+  border: 2px dashed #e2e8f0;
+  transition: all 0.3s ease;
+  background: linear-gradient(180deg, #fafbfc, #ffffff);
+
+  &:hover {
+    border-color: #f59e0b;
+    background: linear-gradient(180deg, #fffaf0, #fef3c7);
+  }
+}
+
+:deep(.el-segmented) {
+  border-radius: 10px;
+  background: #f1f5f9;
+  padding: 4px;
+
+  .el-segmented__item {
+    border-radius: 8px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    &.is-selected {
+      background: linear-gradient(135deg, #f59e0b, #fbbf24);
+      color: #ffffff;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+    }
+
+    &:hover:not(.is-selected) {
+      background: rgba(245, 158, 11, 0.1);
+      color: #d97706;
+    }
+  }
 }
 
 @media (max-width: 980px) {

@@ -12,14 +12,16 @@ import {
   GENERATION_STALE_PENDING_MS,
   GENERATION_TASK_TIMEOUT_MS,
   GPT_MAX_REFERENCE_IMAGES,
+  GROK_MAX_REFERENCE_IMAGES,
   NANO_BANANA_MAX_REFERENCE_IMAGES,
 } from './constants';
 import { CreateGenerationDto } from './dto/create-generation.dto';
 import { ListGenerationsDto } from './dto/list-generations.dto';
 import { GeminiImageProvider } from './providers/gemini-image.provider';
+import { GrokImageProvider } from './providers/grok-image.provider';
 import type { ReferenceImageInput } from './providers/image-provider.types';
 import { OpenAiImageProvider } from './providers/openai-image.provider';
-import { getImageExtension, detectImageBytes, isPrivateProviderHost, PRIVATE_PROVIDER_HOST_ERROR } from './providers/provider-utils';
+import { getImageExtension, detectImageBytes, isLoopbackProviderHost, isPrivateProviderHost, PRIVATE_PROVIDER_HOST_ERROR } from './providers/provider-utils';
 
 interface QueuedGenerationTask {
   recordId: string;
@@ -43,6 +45,7 @@ export class GenerationsService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly openAiProvider: OpenAiImageProvider,
     private readonly geminiProvider: GeminiImageProvider,
+    private readonly grokProvider: GrokImageProvider,
   ) {}
 
   async onModuleInit() {
@@ -63,9 +66,11 @@ export class GenerationsService implements OnModuleInit {
     }
   }
 
-  async create(user: AuthenticatedUser, dto: CreateGenerationDto, files: Express.Multer.File[]) {
+  async create(user: AuthenticatedUser, dto: CreateGenerationDto, files: Express.Multer.File[] = []) {
+    // Multer 无文件时可能传入 undefined，统一成数组避免 length 访问抛 500。
+    const safeFiles = files ?? [];
     this.validateProviderBaseUrl(dto.baseUrl);
-    this.validateReferenceLimit(dto.provider, files.length);
+    this.validateReferenceLimit(dto.provider, safeFiles.length);
 
     // 队列长度超限时拒绝新任务，避免内存堆积过多待处理任务。
     if (this.generationQueue.length >= GENERATION_QUEUE_MAX_LENGTH) {
@@ -74,20 +79,30 @@ export class GenerationsService implements OnModuleInit {
 
     const startedAt = Date.now();
     // 请求返回后 Multer 生命周期结束，先把参考图数据整理成后台任务可直接使用的结构。
-    const referenceImages = this.mapReferenceImages(files);
-    const record = await this.prisma.imageGeneration.create({
-      data: {
-        userId: user.id,
-        provider: dto.provider,
-        model: dto.model,
-        baseUrl: dto.baseUrl,
-        prompt: dto.prompt,
-        size: dto.size,
-        referenceCount: files.length,
-        status: GenerationStatus.PENDING,
-        requestParams: this.buildSafeRequestParams(dto, files.length),
-      },
-    });
+    const referenceImages = this.mapReferenceImages(safeFiles);
+    let record;
+    try {
+      record = await this.prisma.imageGeneration.create({
+        data: {
+          userId: user.id,
+          provider: dto.provider,
+          model: dto.model,
+          baseUrl: dto.baseUrl,
+          prompt: dto.prompt,
+          size: dto.size,
+          referenceCount: safeFiles.length,
+          status: GenerationStatus.PENDING,
+          requestParams: this.buildSafeRequestParams(dto, safeFiles.length),
+        },
+      });
+    } catch (error) {
+      // Prisma 校验失败（例如枚举未同步）时转成可读 400，避免前端只看到 500。
+      this.logger.error(`创建生成记录失败：${error instanceof Error ? error.message : String(error)}`);
+      if (this.isInvalidGenerationInputError(error)) {
+        throw new BadRequestException('生成请求无效：请确认类型为 GPT / Nano Banana / Grok，且模型与请求地址配置正确');
+      }
+      throw error;
+    }
 
     // 生成任务可能耗时较长；接口立即返回 PENDING 记录，后台完成后再更新同一条数据库记录。
     void this.enqueueGeneration(record.id, dto, referenceImages, startedAt);
@@ -184,10 +199,8 @@ export class GenerationsService implements OnModuleInit {
   ) {
     let filename: string | undefined;
     try {
-      const result =
-        dto.provider === Provider.GPT
-          ? await this.openAiProvider.generate({ ...dto, referenceImages })
-          : await this.geminiProvider.generate({ ...dto, referenceImages });
+      // 按 provider 分发到对应上游实现；新增类型时在此扩展，避免误走 Gemini。
+      const result = await this.generateWithProvider(dto, referenceImages);
 
       this.assertGenerationNotTimedOut(startedAt);
 
@@ -323,18 +336,60 @@ export class GenerationsService implements OnModuleInit {
     }
   }
 
+
+  private async generateWithProvider(dto: CreateGenerationDto, referenceImages: ReferenceImageInput[]) {
+    // 将 provider 枚举映射到具体实现，保持 processGeneration 主流程简洁。
+    if (dto.provider === Provider.GPT) {
+      return this.openAiProvider.generate({ ...dto, referenceImages });
+    }
+    if (dto.provider === Provider.GROK) {
+      return this.grokProvider.generate({ ...dto, referenceImages });
+    }
+    return this.geminiProvider.generate({ ...dto, referenceImages });
+  }
+
   private validateReferenceLimit(provider: Provider, count: number) {
-    const limit = provider === Provider.GPT ? GPT_MAX_REFERENCE_IMAGES : NANO_BANANA_MAX_REFERENCE_IMAGES;
+    const limit =
+      provider === Provider.GPT
+        ? GPT_MAX_REFERENCE_IMAGES
+        : provider === Provider.GROK
+          ? GROK_MAX_REFERENCE_IMAGES
+          : NANO_BANANA_MAX_REFERENCE_IMAGES;
     if (count > limit) {
       throw new BadRequestException(`${provider} 最多支持 ${limit} 张参考图`);
     }
   }
 
   private validateProviderBaseUrl(baseUrl: string) {
-    const { hostname } = new URL(baseUrl);
+    let hostname: string;
+    try {
+      hostname = new URL(baseUrl.trim()).hostname;
+    } catch {
+      // IsUrl 一般已拦截，这里兜底避免 new URL 抛错变成 500。
+      throw new BadRequestException('请求地址无效');
+    }
+    // 允许 localhost/127.0.0.1 作为本机中转网关；云元数据与其它内网地址仍拦截。
+    if (isLoopbackProviderHost(hostname)) {
+      return;
+    }
     if (isPrivateProviderHost(hostname)) {
       throw new BadRequestException(PRIVATE_PROVIDER_HOST_ERROR);
     }
+  }
+
+  private isInvalidGenerationInputError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+    const message = error.message.toLowerCase();
+    // Prisma 参数/枚举错误通常带这些关键字，映射为业务侧“请求无效”。
+    return (
+      message.includes('invalid value') ||
+      message.includes('invalid `provider`') ||
+      message.includes('argument `provider`') ||
+      message.includes('unknown argument') ||
+      error.name === 'PrismaClientValidationError'
+    );
   }
 
   private mapReferenceImages(files: Express.Multer.File[]): ReferenceImageInput[] {

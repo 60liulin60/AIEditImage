@@ -59,9 +59,26 @@ export class AdminService {
       throw new BadRequestException('不能禁用当前登录的管理员账号');
     }
 
+    // 检查邮箱是否已被其他用户使用
+    if (dto.email && dto.email !== user.email) {
+      const existingUser = await this.prisma.user.findUnique({ where: { email: dto.email } });
+      if (existingUser) {
+        throw new BadRequestException('用户邮箱已存在');
+      }
+    }
+
+    // 准备更新数据，密码需要哈希
+    const updateData: any = {};
+    if (dto.email !== undefined) updateData.email = dto.email;
+    if (dto.role !== undefined) updateData.role = dto.role;
+    if (dto.isActive !== undefined) updateData.isActive = dto.isActive;
+    if (dto.password) {
+      updateData.passwordHash = await bcrypt.hash(dto.password, 12);
+    }
+
     return this.prisma.user.update({
       where: { id },
-      data: dto,
+      data: updateData,
       select: {
         id: true,
         email: true,

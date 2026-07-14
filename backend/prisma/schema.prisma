@@ -3,7 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  // 本地开发使用 SQLite 单文件，避免每次下载/启动 MySQL。
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -15,6 +16,7 @@ enum UserRole {
 enum Provider {
   GPT
   NANO_BANANA
+  GROK
 }
 
 enum GenerationStatus {
@@ -40,14 +42,15 @@ model ImageGeneration {
   provider        Provider
   model           String
   baseUrl         String
-  prompt          String           @db.Text
+  // SQLite 无 @db.Text；长文本直接用 String 存储。
+  prompt          String
   size            String?
   referenceCount  Int              @default(0)
   status          GenerationStatus @default(PENDING)
   imagePath       String?
   mimeType        String?
   durationMs      Int?
-  errorMessage    String?          @db.Text
+  errorMessage    String?
   requestParams   Json?
   responseSummary Json?
   createdAt       DateTime         @default(now())
