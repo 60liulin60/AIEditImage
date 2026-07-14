@@ -305,13 +305,12 @@ onMounted(loadUsers);
     bottom: 2px;
     width: 4px;
     border-radius: 2px;
-    background: linear-gradient(180deg, #3b82f6, #8b5cf6);
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+    background: var(--color-warm);
   }
 }
 
 .section-head-icon {
-  color: #3b82f6;
+  color: var(--color-warm);
 }
 
 .user-count {
@@ -343,15 +342,27 @@ onMounted(loadUsers);
 /* 操作按钮 */
 .row-actions {
   display: flex;
-  gap: 8px;
+  gap: 4px;
 
-  :deep(.el-button) {
+  /* 表格内为文字链接按钮：无背景、暖色文字、hover 仅变深，与删除链接对齐 */
+  :deep(.el-button.is-link) {
+    height: auto;
+    padding: 4px 6px;
     font-weight: 500;
-    transition: all 0.25s ease;
+    transition: color 0.2s ease;
+  }
+
+  :deep(.el-button--primary.is-link) {
+    color: var(--color-warm);
 
     &:hover:not(:disabled) {
-      transform: translateX(2px);
+      color: var(--color-warm-light);
     }
+  }
+
+  /* 图标与文字间距 */
+  :deep(.el-button .el-icon) {
+    margin-right: 4px;
   }
 }
 
@@ -370,21 +381,21 @@ onMounted(loadUsers);
 .role-chip {
   display: inline-block;
   padding: 3px 10px;
-  border-radius: 10px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
 
   &.role-admin {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(251, 191, 36, 0.12));
-    color: #d97706;
-    border: 1px solid rgba(245, 158, 11, 0.2);
+    background: var(--color-warm-soft);
+    color: var(--color-warm);
+    border: 1px solid rgba(217, 119, 6, 0.2);
   }
 
   &.role-user {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
-    color: #3b82f6;
-    border: 1px solid rgba(59, 130, 246, 0.15);
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
   }
 }
 
@@ -408,7 +419,7 @@ onMounted(loadUsers);
 /* 表格样式统一升级 */
 .styled-table {
   :deep(.el-table__header) th.el-table__cell {
-    background: linear-gradient(180deg, #f8fafc, #f1f5f9);
+    background: #f8fafc;
     color: #475569;
     font-weight: 600;
     font-size: 13px;
@@ -418,10 +429,10 @@ onMounted(loadUsers);
   }
 
   :deep(.el-table__body) tr {
-    transition: background 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background 0.2s ease;
 
     &:hover {
-      background: linear-gradient(90deg, rgba(59, 130, 246, 0.04), transparent);
+      background: #f8fafc;
     }
   }
 
@@ -437,15 +448,15 @@ onMounted(loadUsers);
 
 /* 表单聚焦态统一暖色描边 */
 :deep(.el-input__wrapper) {
-  border-radius: 10px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 8px;
+  transition: box-shadow 0.2s ease;
 
   &:hover {
-    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3) !important;
+    box-shadow: 0 0 0 1px rgba(217, 119, 6, 0.25) !important;
   }
 
   &.is-focus {
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4) !important;
+    box-shadow: 0 0 0 1px rgba(217, 119, 6, 0.25) !important;
   }
 }
 
@@ -455,18 +466,16 @@ onMounted(loadUsers);
   font-size: 14px;
 }
 
-/* 主按钮渐变 */
-:deep(.el-button--primary) {
-  border-radius: 10px;
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6) !important;
+/* 主按钮：实心暖调，排除 link 变体避免误伤文字按钮 */
+:deep(.el-button--primary:not(.is-link)) {
+  border-radius: 8px;
+  background: var(--color-warm) !important;
   border: none !important;
   font-weight: 600;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  transition: background 0.2s ease !important;
 
   &:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35) !important;
-    filter: brightness(1.05);
+    background: var(--color-warm-light) !important;
   }
 }
 
@@ -502,27 +511,26 @@ onMounted(loadUsers);
     padding: 12px 20px;
 
     .el-button--primary {
-      border-radius: 10px;
-      background: linear-gradient(135deg, #3b82f6, #8b5cf6) !important;
-      border: none !important;
+      border-radius: 8px;
+      background: var(--color-warm) !important;
+      border: 1px solid var(--color-warm) !important;
       font-weight: 600;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+      transition: background 0.2s ease !important;
 
       &:hover:not(:disabled) {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35) !important;
-        filter: brightness(1.05);
+        background: var(--color-warm-light) !important;
+        border-color: var(--color-warm-light) !important;
       }
     }
 
     .el-button:not(.el-button--primary):not(.el-button--danger) {
-      border-radius: 10px;
-      transition: all 0.25s ease;
+      border-radius: 8px;
+      transition: all 0.2s ease;
 
       &:hover:not(:disabled) {
-        background: #dbeafe;
-        border-color: #3b82f6;
-        color: #2563eb;
+        background: var(--color-warm-soft);
+        border-color: var(--color-warm);
+        color: var(--color-warm);
       }
     }
   }
@@ -545,15 +553,15 @@ onMounted(loadUsers);
 
     .el-input__wrapper,
     .el-select__wrapper {
-      border-radius: 10px !important;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 8px !important;
+      transition: box-shadow 0.2s ease;
 
       &:hover {
-        box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3) !important;
+        box-shadow: 0 0 0 1px rgba(217, 119, 6, 0.25) !important;
       }
 
       &.is-focus {
-        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4) !important;
+        box-shadow: 0 0 0 1px rgba(217, 119, 6, 0.25) !important;
       }
     }
   }

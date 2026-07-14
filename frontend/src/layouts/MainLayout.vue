@@ -106,10 +106,9 @@ async function handleLogout() {
   place-items: center;
   width: 40px;
   height: 40px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+  border-radius: 8px;
+  background: #d97706;
   color: #ffffff;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
 }
 
 .brand-text {
@@ -140,7 +139,7 @@ async function handleLogout() {
   }
 
   &.is-active {
-    background: linear-gradient(90deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.05));
+    background: rgba(245, 158, 11, 0.12);
     color: #fbbf24;
     font-weight: 600;
     position: relative;
@@ -153,8 +152,7 @@ async function handleLogout() {
       bottom: 8px;
       width: 3px;
       border-radius: 2px;
-      background: linear-gradient(180deg, #f59e0b, #fbbf24);
-      box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+      background: #f59e0b;
     }
   }
 }
@@ -189,11 +187,10 @@ async function handleLogout() {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  background: #0f172a;
   color: #ffffff;
   font-weight: 700;
   font-size: 16px;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
 }
 
 .user-email {
@@ -208,9 +205,8 @@ async function handleLogout() {
 
   &:hover {
     background: #fef3c7;
-    border-color: #f59e0b;
+    border-color: #d97706;
     color: #d97706;
-    transform: scale(1.05);
   }
 }
 
@@ -222,10 +218,7 @@ async function handleLogout() {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 32px;
-  background:
-    radial-gradient(ellipse at 20% 50%, rgba(245, 158, 11, 0.03) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(37, 99, 235, 0.03) 0%, transparent 50%),
-    #f8fafc;
+  background: #f8fafc;
 }
 
 /* 路由切换过渡动画 */

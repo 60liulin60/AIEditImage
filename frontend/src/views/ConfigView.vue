@@ -285,7 +285,7 @@ onMounted(loadConfigs);
   animation: fadeIn 0.5s ease-out both;
 }
 
-/* 分区标题：图标 + 渐变装饰线 */
+/* 分区标题：图标 + 纯色装饰线 */
 .section-head {
   display: flex;
   align-items: center;
@@ -315,13 +315,12 @@ onMounted(loadConfigs);
     bottom: 2px;
     width: 4px;
     border-radius: 2px;
-    background: linear-gradient(180deg, #f59e0b, #fbbf24);
-    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+    background: var(--color-warm);
   }
 }
 
 .section-head-icon {
-  color: #f59e0b;
+  color: var(--color-warm);
 }
 
 .table-section {
@@ -353,8 +352,8 @@ onMounted(loadConfigs);
   gap: 6px;
   align-self: flex-start;
   padding: 4px 10px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(52, 211, 153, 0.08));
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.08);
   color: #059669;
   font-size: 12px;
   font-weight: 500;
@@ -369,24 +368,32 @@ onMounted(loadConfigs);
 .provider-chip {
   display: inline-block;
   padding: 3px 10px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
-  color: #3b82f6;
+  border-radius: 6px;
+  background: var(--color-warm-soft);
+  color: var(--color-warm);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
+  border: 1px solid rgba(217, 119, 6, 0.2);
 }
 
 .row-actions {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 4px;
 
-  :deep(.el-button) {
+  /* 表格内操作用文字链接：无背景无边框，仅文字色区分主/危险，保持行内紧凑。 */
+  :deep(.el-button.is-link) {
+    height: auto;
+    padding: 4px 8px;
     font-weight: 500;
-    transition: all 0.25s ease;
+    background: transparent !important;
+    border: none !important;
+    transition: color 0.2s ease, background 0.2s ease;
 
     &:hover:not(:disabled) {
-      transform: translateX(2px);
+      background: var(--color-warm-soft) !important;
+      border-radius: 6px;
     }
   }
 }
@@ -394,7 +401,7 @@ onMounted(loadConfigs);
 /* 表格样式统一升级 */
 .styled-table {
   :deep(.el-table__header) th.el-table__cell {
-    background: linear-gradient(180deg, #f8fafc, #f1f5f9);
+    background: #f8fafc;
     color: #475569;
     font-weight: 600;
     font-size: 13px;
@@ -404,16 +411,16 @@ onMounted(loadConfigs);
   }
 
   :deep(.el-table__body) tr {
-    transition: background 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background 0.2s ease;
 
     &:hover {
-      background: linear-gradient(90deg, rgba(245, 158, 11, 0.04), transparent);
+      background: var(--color-warm-soft);
     }
   }
 
   :deep(.el-table__body) td.el-table__cell {
     color: #334155;
-    transition: color 0.25s ease;
+    transition: color 0.2s ease;
 
     tr:hover & {
       color: #0f172a;
@@ -423,15 +430,15 @@ onMounted(loadConfigs);
 
 /* 表单聚焦态统一暖色描边 */
 :deep(.el-input__wrapper) {
-  border-radius: 10px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 8px;
+  transition: box-shadow 0.2s ease;
 
   &:hover {
-    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3) !important;
+    box-shadow: 0 0 0 1px rgba(217, 119, 6, 0.15) !important;
   }
 
   &.is-focus {
-    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.4) !important;
+    box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.25) !important;
   }
 }
 
@@ -441,29 +448,36 @@ onMounted(loadConfigs);
   font-size: 14px;
 }
 
-/* 主按钮渐变 */
-:deep(.el-button--primary) {
-  border-radius: 10px;
-  background: linear-gradient(135deg, #f59e0b, #fbbf24) !important;
+/* 主按钮纯色暖调：仅实心按钮，排除文字链接（link）变体避免误加背景。 */
+:deep(.el-button--primary:not(.is-link):not(.is-text)) {
+  border-radius: 8px;
+  background: var(--color-warm) !important;
   border: none !important;
   font-weight: 600;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  transition: background 0.2s ease !important;
 
   &:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(245, 158, 11, 0.3) !important;
-    filter: brightness(1.05);
+    background: var(--color-warm-light) !important;
+  }
+}
+
+/* primary link 文字色统一为暖色，覆盖 Element Plus 默认蓝。 */
+:deep(.el-button--primary.is-link) {
+  color: var(--color-warm);
+
+  &:hover:not(:disabled) {
+    color: var(--color-warm-light);
   }
 }
 
 :deep(.el-button:not(.el-button--primary):not(.el-button--danger)) {
-  border-radius: 10px;
-  transition: all 0.25s ease;
+  border-radius: 8px;
+  transition: background 0.2s ease;
 
   &:hover:not(:disabled) {
-    background: #fef3c7;
-    border-color: #f59e0b;
-    color: #d97706;
+    background: var(--color-warm-soft);
+    border-color: var(--color-warm);
+    color: var(--color-warm);
   }
 }
 
@@ -517,14 +531,14 @@ onMounted(loadConfigs);
     .el-input__wrapper,
     .el-select__wrapper {
       border-radius: 8px !important;
-      transition: all 0.2s ease;
+      transition: box-shadow 0.2s ease;
 
       &:hover {
-        box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.4) !important;
+        box-shadow: 0 0 0 1px rgba(217, 119, 6, 0.15) !important;
       }
 
       &.is-focus {
-        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.5) !important;
+        box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.25) !important;
       }
     }
   }
@@ -557,20 +571,22 @@ onMounted(loadConfigs);
   }
 
   .el-button--primary {
-    background: linear-gradient(135deg, #f59e0b, #fbbf24) !important;
+    background: var(--color-warm) !important;
     border: none !important;
+    transition: background 0.2s ease !important;
 
     &:hover:not(:disabled) {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3) !important;
+      background: var(--color-warm-light) !important;
     }
   }
 
   .el-button--default {
+    transition: background 0.2s ease;
+
     &:hover:not(:disabled) {
-      background: #fef3c7;
-      border-color: #f59e0b;
-      color: #d97706;
+      background: var(--color-warm-soft);
+      border-color: var(--color-warm);
+      color: var(--color-warm);
     }
   }
 }

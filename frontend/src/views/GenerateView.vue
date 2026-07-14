@@ -297,11 +297,11 @@ onBeforeUnmount(clearPollingTimer);
   animation: fadeIn 0.5s ease-out both;
 }
 
-/* 表单面板：顶部渐变装饰条 + 微妙阴影层次 */
+/* 表单面板：纯白卡片，顶部一条暖色实线点明主色。 */
 .form-panel {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), #ffffff);
+  background: #ffffff;
 
   &::before {
     content: '';
@@ -309,59 +309,28 @@ onBeforeUnmount(clearPollingTimer);
     top: 0;
     left: 0;
     right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b);
+    height: 3px;
+    background: var(--color-warm);
     border-radius: 12px 12px 0 0;
-  }
-
-  &::after {
-    content: '';
-    position: absolute;
-    top: 4px;
-    left: 0;
-    right: 0;
-    height: 20px;
-    background: linear-gradient(180deg, rgba(245, 158, 11, 0.03), transparent);
-    pointer-events: none;
   }
 }
 
-/* 生成按钮：渐变色 + 图标旋转 + 悬浮微抬 */
+/* 生成按钮：纯暖色实底，hover 仅微调亮度。 */
 .generate-btn {
-  position: relative;
-  height: 52px;
+  height: 48px;
   font-size: 16px;
   font-weight: 600;
-  background: linear-gradient(135deg, #f59e0b, #fbbf24) !important;
-  border: none !important;
-  border-radius: 12px !important;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  background: var(--color-warm) !important;
+  border: 1px solid var(--color-warm) !important;
+  border-radius: 8px !important;
+  transition: background 0.2s ease !important;
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-
-  &::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-    transform: translateX(-100%);
-    transition: transform 0.6s;
-  }
 
   &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 32px rgba(245, 158, 11, 0.4) !important;
-    filter: brightness(1.08);
-
-    &::before {
-      transform: translateX(100%);
-    }
-  }
-
-  &:active:not(:disabled) {
-    transform: translateY(0);
+    background: var(--color-warm-light) !important;
+    border-color: var(--color-warm-light) !important;
   }
 }
 
@@ -382,7 +351,7 @@ onBeforeUnmount(clearPollingTimer);
 /* 提示词模板面板 */
 .template-panel {
   animation: fadeIn 0.5s ease-out 0.1s both;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), #ffffff);
+  background: var(--color-surface);
 }
 
 .template-title {
@@ -399,10 +368,9 @@ onBeforeUnmount(clearPollingTimer);
     left: 0;
     top: 3px;
     bottom: 3px;
-    width: 4px;
+    width: 3px;
     border-radius: 2px;
-    background: linear-gradient(180deg, #3b82f6, #8b5cf6);
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+    background: var(--color-warm);
   }
 }
 
@@ -423,11 +391,11 @@ onBeforeUnmount(clearPollingTimer);
   }
 
   &::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #cbd5e1, #94a3b8);
+    background: #cbd5e1;
     border-radius: 3px;
 
     &:hover {
-      background: linear-gradient(180deg, #94a3b8, #64748b);
+      background: #94a3b8;
     }
   }
 }
@@ -437,15 +405,15 @@ onBeforeUnmount(clearPollingTimer);
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  padding: 16px 18px;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #ffffff;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
   text-align: left;
   cursor: pointer;
   position: relative;
   overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color 0.2s ease, background 0.2s ease;
 
   &::before {
     content: '';
@@ -454,9 +422,9 @@ onBeforeUnmount(clearPollingTimer);
     top: 0;
     bottom: 0;
     width: 0;
-    background: linear-gradient(180deg, #f59e0b, #fbbf24);
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border-radius: 12px 0 0 12px;
+    background: var(--color-warm);
+    transition: width 0.2s ease;
+    border-radius: 8px 0 0 8px;
   }
 
   &::after {
@@ -474,11 +442,10 @@ onBeforeUnmount(clearPollingTimer);
 
   &:hover {
     border-color: #f59e0b;
-    transform: translateY(-3px);
-    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+    background: var(--color-warm-soft);
 
     &::before {
-      width: 5px;
+      width: 3px;
     }
 
     &::after {
@@ -509,26 +476,11 @@ onBeforeUnmount(clearPollingTimer);
   transition: color 0.3s ease;
 }
 
-/* 最新结果面板：成功态微光动画边框 */
+/* 最新结果面板 */
 .result-panel {
   animation: fadeIn 0.5s ease-out 0.2s both;
   position: relative;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), #ffffff);
-
-  &::before {
-    content: '';
-    position: absolute;
-    inset: -2px;
-    border-radius: 14px;
-    padding: 2px;
-    background: linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b, #fbbf24);
-    background-size: 200% 100%;
-    animation: shimmer 3s linear infinite;
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    pointer-events: none;
-  }
+  background: var(--color-surface);
 }
 
 .result-title {
@@ -545,25 +497,18 @@ onBeforeUnmount(clearPollingTimer);
     left: 0;
     top: 3px;
     bottom: 3px;
-    width: 4px;
+    width: 3px;
     border-radius: 2px;
-    background: linear-gradient(180deg, #f59e0b, #fbbf24);
-    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+    background: var(--color-warm);
   }
 }
 
 .latest-image {
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 12px;
+  border-radius: 8px;
   overflow: hidden;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
-
-  &:hover {
-    transform: scale(1.03);
-    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.15);
-  }
+  box-shadow: var(--shadow-card);
 }
 
 @keyframes fadeIn {
@@ -575,11 +520,6 @@ onBeforeUnmount(clearPollingTimer);
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
 }
 
 /* 表单聚焦态统一暖色描边 */
@@ -617,36 +557,35 @@ onBeforeUnmount(clearPollingTimer);
 
 /* 上传区域自定义样式 */
 :deep(.el-upload-dragger) {
-  border-radius: 12px;
-  border: 2px dashed #e2e8f0;
-  transition: all 0.3s ease;
-  background: linear-gradient(180deg, #fafbfc, #ffffff);
+  border-radius: 8px;
+  border: 1px dashed #cbd5e1;
+  transition: border-color 0.2s ease, background 0.2s ease;
+  background: var(--color-surface-alt);
 
   &:hover {
-    border-color: #f59e0b;
-    background: linear-gradient(180deg, #fffaf0, #fef3c7);
+    border-color: var(--color-warm);
+    background: var(--color-warm-soft);
   }
 }
 
 :deep(.el-segmented) {
-  border-radius: 10px;
+  border-radius: 8px;
   background: #f1f5f9;
   padding: 4px;
 
   .el-segmented__item {
-    border-radius: 8px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 6px;
+    transition: background 0.2s ease, color 0.2s ease;
 
     &.is-selected {
-      background: linear-gradient(135deg, #f59e0b, #fbbf24);
+      background: var(--color-warm);
       color: #ffffff;
       font-weight: 600;
-      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
     }
 
     &:hover:not(.is-selected) {
-      background: rgba(245, 158, 11, 0.1);
-      color: #d97706;
+      background: rgba(217, 119, 6, 0.1);
+      color: var(--color-warm);
     }
   }
 }

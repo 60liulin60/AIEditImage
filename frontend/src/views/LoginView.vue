@@ -1,13 +1,5 @@
 <template>
   <div class="login-page">
-    <div class="login-bg">
-      <div class="bg-gradient"></div>
-      <div class="bg-shapes">
-        <div class="shape shape-1"></div>
-        <div class="shape shape-2"></div>
-        <div class="shape shape-3"></div>
-      </div>
-    </div>
     <div class="login-panel">
       <div class="mb-8">
         <h1 class="brand-title mb-3">AIEditImage</h1>
@@ -91,120 +83,34 @@ async function handleLogin() {
   min-height: 100%;
   place-items: center;
   padding: 24px;
+  background: var(--color-surface-alt);
   /* 小屏登录表单过长时仅在本页滚动，不依赖 body 外部滚动。 */
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
-.login-bg {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-}
-
-.bg-gradient {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse at 20% 30%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 70%, rgba(245, 158, 11, 0.12) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 50%, rgba(139, 92, 246, 0.08) 0%, transparent 60%),
-    #f8fafc;
-}
-
-.bg-shapes {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-}
-
-.shape {
-  position: absolute;
-  border-radius: 50%;
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(251, 191, 36, 0.1));
-  animation: float 20s ease-in-out infinite;
-
-  &.shape-1 {
-    width: 300px;
-    height: 300px;
-    top: -50px;
-    left: -50px;
-    animation-delay: 0s;
-  }
-
-  &.shape-2 {
-    width: 400px;
-    height: 400px;
-    bottom: -100px;
-    right: -100px;
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(139, 92, 246, 0.1));
-    animation-delay: -7s;
-  }
-
-  &.shape-3 {
-    width: 250px;
-    height: 250px;
-    top: 50%;
-    right: 10%;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(59, 130, 246, 0.08));
-    animation-delay: -14s;
-  }
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translate(0, 0) scale(1);
-  }
-  33% {
-    transform: translate(30px, -30px) scale(1.05);
-  }
-  66% {
-    transform: translate(-20px, 20px) scale(0.95);
-  }
-}
-
 .login-panel {
   position: relative;
-  z-index: 1;
-  width: min(440px, 100%);
+  width: min(420px, 100%);
   padding: 40px;
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  border-radius: 20px;
-  box-shadow:
-    0 8px 32px rgba(15, 23, 42, 0.08),
-    0 16px 48px rgba(15, 23, 42, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
 }
 
 .brand-title {
   font-family: 'Outfit', sans-serif;
-  font-size: 36px;
+  font-size: 32px;
   font-weight: 700;
-  letter-spacing: -0.03em;
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  letter-spacing: -0.02em;
+  color: var(--color-warm);
   margin: 0;
 }
 
 .subtitle {
-  color: #64748b;
+  color: var(--color-muted);
   font-size: 15px;
   line-height: 1.6;
   margin: 0;
@@ -215,19 +121,14 @@ async function handleLogin() {
   height: 48px;
   font-size: 16px;
   font-weight: 600;
-  background: linear-gradient(135deg, #f59e0b, #fbbf24) !important;
-  border: none !important;
-  border-radius: 12px !important;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  background: var(--color-warm) !important;
+  border: 1px solid var(--color-warm) !important;
+  border-radius: 8px !important;
+  transition: background 0.2s ease !important;
 
   &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(245, 158, 11, 0.35) !important;
-    filter: brightness(1.05);
-  }
-
-  &:active:not(:disabled) {
-    transform: translateY(0);
+    background: var(--color-warm-light) !important;
+    border-color: var(--color-warm-light) !important;
   }
 }
 
@@ -238,16 +139,12 @@ async function handleLogin() {
 }
 
 :deep(.el-input__wrapper) {
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 12px 16px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-  &:hover {
-    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3);
-  }
+  transition: box-shadow 0.2s ease;
 
   &.is-focus {
-    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.4) !important;
+    box-shadow: 0 0 0 1px var(--color-warm) !important;
   }
 }
 </style>

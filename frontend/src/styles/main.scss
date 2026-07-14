@@ -6,14 +6,26 @@
 :root {
   --color-sidebar: #0f172a;
   --color-sidebar-light: #1e293b;
-  --color-warm: #f59e0b;
-  --color-warm-light: #fbbf24;
+  --color-warm: #d97706;
+  --color-warm-light: #f59e0b;
+  --color-warm-soft: #fef3c7;
   --color-ink: #1f2937;
   --color-muted: #6b7280;
   --color-border: #e2e8f0;
   --color-surface: #ffffff;
   --color-surface-alt: #f8fafc;
   --color-bg: #f1f5f9;
+
+  /* 语义色别名：GalleryView 等按语义命名引用，统一映射到上面的基础调色板，
+   * 避免使用未定义变量导致文字/背景/徽章回退成默认色。 */
+  --color-text-primary: var(--color-ink);
+  --color-text-secondary: var(--color-muted);
+  --color-bg-secondary: var(--color-bg);
+  --color-primary: var(--color-warm);
+  --color-primary-light: rgba(245, 158, 11, 0.12);
+  --color-warning: #f59e0b;
+  --color-success: #10b981;
+  --color-danger: #ef4444;
   --font-display: 'Outfit', 'Noto Sans SC', system-ui, sans-serif;
   --font-body: 'Noto Sans SC', 'Outfit', system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
@@ -58,15 +70,12 @@ select {
   font: inherit;
 }
 
-/* 页面外壳承载侧边栏 + 内容区布局，背景使用微妙噪点纹理增加质感。 */
+/* 页面外壳承载侧边栏 + 内容区布局，纯色背景保持克制。 */
 .page-shell {
   height: 100%;
   min-height: 100%;
   overflow: hidden;
-  background:
-    radial-gradient(ellipse at 20% 50%, rgba(245, 158, 11, 0.03) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(37, 99, 235, 0.03) 0%, transparent 50%),
-    var(--color-bg);
+  background: var(--color-bg);
 }
 
 /* 通用内容面板：白色卡片 + 精细阴影 + 微妙边框，承载表单、表格或卡片。 */
@@ -94,9 +103,9 @@ select {
   left: 0;
   top: 4px;
   bottom: 4px;
-  width: 4px;
+  width: 3px;
   border-radius: 2px;
-  background: linear-gradient(180deg, var(--color-warm), var(--color-warm-light));
+  background: var(--color-warm);
 }
 
 /* ── 工具类 ── */
@@ -136,30 +145,24 @@ select {
   100% { opacity: 1; transform: translateX(0); }
 }
 
-/* 品牌渐变按钮样式覆盖。 */
+/* 品牌主按钮：纯暖色，hover 只做轻微加深，不发光不上浮。 */
 .btn-gradient {
-  background: linear-gradient(135deg, var(--color-warm), var(--color-warm-light)) !important;
+  background: var(--color-warm) !important;
   border: none !important;
   color: #ffffff !important;
   font-weight: 600 !important;
-  transition: transform 0.25s var(--ease-smooth), box-shadow 0.25s var(--ease-smooth), filter 0.25s ease !important;
+  transition: background 0.2s var(--ease-smooth) !important;
 }
 
 .btn-gradient:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.35);
-  filter: brightness(1.05);
-}
-
-.btn-gradient:active {
-  transform: translateY(0);
+  background: var(--color-warm-light) !important;
 }
 
 /* Element Plus 全局聚焦态统一为暖色描边。 */
 .el-input__wrapper:focus-within,
 .el-textarea__inner:focus,
 .el-select .el-input.is-focus .el-input__wrapper {
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3) !important;
+  box-shadow: 0 0 0 1px var(--color-warm) !important;
   border-color: var(--color-warm) !important;
 }
 
