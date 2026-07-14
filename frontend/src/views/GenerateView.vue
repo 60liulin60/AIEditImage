@@ -76,15 +76,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import type { UploadUserFile } from 'element-plus';
 import { MagicStick, UploadFilled } from '@element-plus/icons-vue';
-import { createGeneration, fetchGeneration, getGenerationImageUrl } from '../api/generations';
+import { createGeneration, getGenerationImageUrl } from '../api/generations';
 import { getErrorMessage } from '../api/http';
 import { promptTemplates } from '../constants/prompt-templates';
 import type { ApiConfig, Provider } from '../types';
 import { decryptApiKey, listApiConfigs } from '../utils/api-config-store';
 import { formatProvider } from '../utils/format';
+import { parsePollInterval, useGenerationPolling } from '../composables/useGenerationPolling';
+import { getReferenceLimit } from '../constants/providers';
 
 const configs = ref<ApiConfig[]>([]);
 const configsLoading = ref(false);
@@ -94,13 +96,30 @@ const fileList = ref<UploadUserFile[]>([]);
 const submitting = ref(false);
 // 最新成功结果的图片地址，清空表示当前没有可预览结果。
 const latestImageUrl = ref('');
-// 单个轮询定时器句柄，离开页面或任务结束时必须清理。
-let pollingTimer: number | undefined;
 
-// 默认 5 秒轮询一次，避免频繁请求后端；可通过前端 .env 覆盖。
-const DEFAULT_GENERATION_POLL_INTERVAL_MS = 5000;
-// 环境变量只接受正整数毫秒，异常值回退默认值，防止 0 或负数导致高频请求。
+// 轮询间隔可通过前端 .env 覆盖，非法值回退默认；卸载时由 composable 自动清理定时器。
 const generationPollIntervalMs = parsePollInterval(import.meta.env.VITE_GENERATION_POLL_INTERVAL_MS);
+const polling = useGenerationPolling({
+  intervalMs: generationPollIntervalMs,
+  onSuccess(record) {
+    // 成功后再生成图片地址，确保后端文件已经可读。
+    latestImageUrl.value = getGenerationImageUrl(record.id);
+    submitting.value = false;
+    ElMessage.success('图片生成成功');
+  },
+  onFailed(_record, message) {
+    submitting.value = false;
+    ElMessage.error(message);
+  },
+  onTimeout() {
+    submitting.value = false;
+    ElMessage.warning('生成仍在处理中，请稍后到图片列表查看');
+  },
+  onError(_error, message) {
+    // 单次查询失败只提示，不中断轮询（除非已到时间上限）。
+    ElMessage.error(message);
+  },
+});
 
 const providerOptions = [
   { label: 'GPT', value: 'GPT' },
@@ -118,12 +137,8 @@ const form = reactive({
 
 // 当前选中的配置作为生成请求的 provider/baseUrl/model 来源。
 const selectedConfig = computed(() => configs.value.find((config) => config.id === form.configId));
-// 参考图上限与后端常量保持一致：GPT 16 / Nano Banana 3 / Grok 5。
-const referenceLimit = computed(() => {
-  if (form.provider === 'GPT') return 16;
-  if (form.provider === 'GROK') return 5;
-  return 3;
-});
+// 参考图上限集中在 constants/providers，与后端常量保持一致。
+const referenceLimit = computed(() => getReferenceLimit(form.provider));
 // 模板只展示当前 provider 可用的内容，避免误用不兼容提示词。
 const filteredTemplates = computed(() => promptTemplates.filter((template) => template.provider === form.provider));
 
@@ -154,68 +169,6 @@ function trimReferenceFilesIfNeeded() {
 function useTemplate(prompt: string) {
   // 模板只是填充文本，仍保留用户继续编辑的空间。
   form.prompt = prompt;
-}
-
-function parsePollInterval(value: string | undefined) {
-  // Vite 环境变量始终是字符串，非法值统一回落到默认轮询间隔。
-  const parsedValue = Number(value);
-  return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : DEFAULT_GENERATION_POLL_INTERVAL_MS;
-}
-
-function clearPollingTimer() {
-  if (pollingTimer) {
-    // window.clearTimeout 只接受有效句柄，清理后置空便于重复调用。
-    window.clearTimeout(pollingTimer);
-    pollingTimer = undefined;
-  }
-}
-
-function scheduleGenerationPolling(id: string, attempt = 0) {
-  // 每次只保留一个轮询任务，避免连续点击或重试导致并发查询。
-  clearPollingTimer();
-  pollingTimer = window.setTimeout(() => {
-    void pollGenerationResult(id, attempt);
-  }, generationPollIntervalMs);
-}
-
-async function pollGenerationResult(id: string, attempt = 0) {
-  try {
-    const record = await fetchGeneration(id);
-    if (record.status === 'SUCCESS') {
-      // 成功后再生成图片地址，确保后端文件已经可读。
-      latestImageUrl.value = getGenerationImageUrl(record.id);
-      submitting.value = false;
-      clearPollingTimer();
-      ElMessage.success('图片生成成功');
-      return;
-    }
-
-    if (record.status === 'FAILED') {
-      // 后端失败信息优先展示，缺失时再使用通用文案。
-      submitting.value = false;
-      clearPollingTimer();
-      ElMessage.error(record.errorMessage || '图片生成失败');
-      return;
-    }
-
-    // 生成任务仍在后端执行，最多轮询约 3 分钟，避免页面无限等待。
-    if (attempt >= Math.ceil(180000 / generationPollIntervalMs)) {
-      submitting.value = false;
-      clearPollingTimer();
-      ElMessage.warning('生成仍在处理中，请稍后到图片列表查看');
-      return;
-    }
-
-    scheduleGenerationPolling(id, attempt + 1);
-  } catch (error) {
-    ElMessage.error(getErrorMessage(error, '生成结果查询失败'));
-    if (attempt >= Math.ceil(180000 / generationPollIntervalMs)) {
-      submitting.value = false;
-      clearPollingTimer();
-      return;
-    }
-    scheduleGenerationPolling(id, attempt + 1);
-  }
 }
 
 async function handleGenerate() {
@@ -259,7 +212,7 @@ async function handleGenerate() {
     // 后端异步生成，先保存 PENDING 记录；前端轮询同一条记录直到成功或失败。
     latestImageUrl.value = '';
     ElMessage.success('生成任务已提交');
-    scheduleGenerationPolling(result.id);
+    polling.start(result.id);
   } catch (error) {
     submitting.value = false;
     ElMessage.error(getErrorMessage(error, '图片生成失败'));
@@ -281,8 +234,6 @@ onMounted(async () => {
     configsLoading.value = false;
   }
 });
-
-onBeforeUnmount(clearPollingTimer);
 </script>
 
 <style scoped lang="scss">

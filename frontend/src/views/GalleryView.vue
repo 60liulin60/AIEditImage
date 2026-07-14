@@ -73,7 +73,7 @@
         <div class="card-body">
           <p class="card-prompt">{{ item.prompt }}</p>
           <div class="card-meta">
-            <span class="provider-badge">{{ item.provider }}</span>
+            <span class="provider-badge">{{ formatProvider(item.provider) }}</span>
             <span class="model-text">{{ item.model }}</span>
           </div>
           <div class="card-actions">
@@ -144,7 +144,7 @@
           <div class="info-grid">
             <div class="info-item">
               <label>服务商：</label>
-              <span>{{ detailRecord.provider }}</span>
+              <span>{{ formatProvider(detailRecord.provider) }}</span>
             </div>
             <div class="info-item">
               <label>模型：</label>
@@ -202,10 +202,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Refresh, Loading, WarningFilled } from '@element-plus/icons-vue'
 import { fetchGenerations, fetchGeneration, deleteGeneration, getGenerationImageUrl } from '../api/generations'
-import { formatDate } from '../utils/format'
+import { getErrorMessage } from '../api/http'
+import { formatDate, formatGenerationStatus, formatJson, formatProvider } from '../utils/format'
+import { useGenerationPolling } from '../composables/useGenerationPolling'
 import type { ImageGeneration, GenerationStatus, Provider } from '../types'
 
 const generations = ref<ImageGeneration[]>([])
@@ -217,20 +219,18 @@ const providerFilter = ref('')
 const statusFilter = ref('')
 const detailVisible = ref(false)
 const detailRecord = ref<ImageGeneration | null>(null)
-const pollingTimers = new Map<string, number>()
 
-const getStatusText = (status: GenerationStatus) => {
-  const map: Record<GenerationStatus, string> = {
-    PENDING: '处理中',
-    SUCCESS: '成功',
-    FAILED: '失败'
-  }
-  return map[status]
-}
+// 列表页为每条 PENDING 记录并行轮询，拿到新状态后就地替换列表项；卸载时由 composable 自动清理。
+const polling = useGenerationPolling({
+  onUpdate(record) {
+    const index = generations.value.findIndex((item) => item.id === record.id)
+    if (index !== -1) {
+      generations.value[index] = record
+    }
+  },
+})
 
-const formatJson = (data: any) => {
-  return JSON.stringify(data, null, 2)
-}
+const getStatusText = (status: GenerationStatus) => formatGenerationStatus(status)
 
 const loadGenerations = async () => {
   loading.value = true
@@ -245,7 +245,7 @@ const loadGenerations = async () => {
     total.value = response.total
     startPolling()
   } catch (error) {
-    ElMessage.error('加载图片列表失败')
+    ElMessage.error(getErrorMessage(error, '加载图片列表失败'))
   } finally {
     loading.value = false
   }
@@ -274,7 +274,7 @@ const viewDetail = async (item: ImageGeneration) => {
     const response = await fetchGeneration(item.id)
     detailRecord.value = response
   } catch (error) {
-    ElMessage.error('加载详情失败')
+    ElMessage.error(getErrorMessage(error, '加载详情失败'))
   }
 }
 
@@ -289,52 +289,25 @@ const deleteItem = async (id: string) => {
     ElMessage.success('删除成功')
     loadGenerations()
   } catch (error) {
+    // ElMessageBox 取消时抛出字符串 'cancel'，非用户取消才提示失败。
     if (error !== 'cancel') {
-      ElMessage.error('删除失败')
+      ElMessage.error(getErrorMessage(error, '删除失败'))
     }
   }
 }
 
 const startPolling = () => {
-  stopPolling()
-  generations.value.forEach(item => {
+  // 重新加载列表后，先停掉旧轮询再为当前 PENDING 记录重建，避免残留定时器。
+  polling.clearAll()
+  generations.value.forEach((item) => {
     if (item.status === 'PENDING') {
-      pollGeneration(item.id)
+      polling.start(item.id)
     }
   })
-}
-
-const pollGeneration = async (id: string) => {
-  try {
-    const response = await fetchGeneration(id)
-    const index = generations.value.findIndex(g => g.id === id)
-    if (index !== -1) {
-      generations.value[index] = response
-      if (response.status === 'PENDING') {
-        const timer = window.setTimeout(() => pollGeneration(id), 3000)
-        pollingTimers.set(id, timer)
-      } else {
-        pollingTimers.delete(id)
-      }
-    }
-  } catch (error) {
-    console.error('Polling failed:', error)
-  }
-}
-
-const stopPolling = () => {
-  pollingTimers.forEach((timer) => {
-    clearTimeout(timer)
-  })
-  pollingTimers.clear()
 }
 
 onMounted(() => {
   loadGenerations()
-})
-
-onUnmounted(() => {
-  stopPolling()
 })
 </script>
 

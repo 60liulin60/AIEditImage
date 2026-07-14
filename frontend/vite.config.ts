@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import AutoImport from 'unplugin-auto-import/vite';
@@ -34,5 +35,12 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  test: {
+    // 组件测试需要 DOM 环境；全局 API 免去每个用例重复 import describe/it/expect。
+    environment: 'jsdom',
+    globals: true,
+    // 自动导入的 ElMessage/ElMessageBox 等在测试中按需 mock，这里仅提供基础环境。
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
   },
 });
