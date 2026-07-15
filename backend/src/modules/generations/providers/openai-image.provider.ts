@@ -19,7 +19,8 @@ interface OpenAiResponseSummary extends Record<string, unknown> {
   source: string;
   revisedPrompts?: string[];
   actualParams?: Record<string, unknown>;
-  // rawResponse 保存 GPT 接口返回的完整 JSON，查看页依赖它展示 revised_prompt 等所有上游字段。
+  // rawResponse 保存 GPT 接口返回的 JSON（已剥离 b64_json / output[].result 等大体积 base64 字段），
+  // 查看页依赖它展示 revised_prompt 等上游字段，同时避免数据库存储膨胀。
   rawResponse: unknown;
 }
 

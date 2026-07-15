@@ -70,7 +70,8 @@ describe('OpenAiImageProvider', () => {
       source: 'openai.data.b64_json',
       revisedPrompts: ['优化后的红色方块图片'],
       actualParams: { size: '1024x1024' },
-      rawResponse: payload,
+      // rawResponse 会剥离 base64 图片数据以减少存储体积，仅保留元数据字段。
+      rawResponse: { data: [{ revised_prompt: '优化后的红色方块图片', size: '1024x1024' }] },
     });
   });
 
@@ -182,7 +183,16 @@ describe('OpenAiImageProvider', () => {
       source: 'openai.output.result',
       revisedPrompts: ['兼容响应里的优化提示词'],
       actualParams: { output_format: 'png' },
-      rawResponse: payload,
+      // rawResponse 会剥离 output[].result 里的 base64，避免历史记录膨胀，因此这里断言剥离后的形态。
+      rawResponse: {
+        output: [
+          {
+            type: 'image_generation_call',
+            revised_prompt: '兼容响应里的优化提示词',
+            output_format: 'png',
+          },
+        ],
+      },
     });
   });
 
